@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Winternet</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="google-site-verification" content="oVBkN0EH6BxtItpO6erSxhE9mqsge51aJL_32cK1RZQ" />
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        /* Custom styles */
+        body {
+            background-color: #f8f9fa;
+            position: relative; /* Set position to relative to allow absolute positioning of image */
+        }
+        .post {
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+        }
+        /* Dark mode styles */
+        body.dark-mode {
+            background-color: #121212;
+            color: #ffffff;
+        }
+        body.dark-mode .post {
+            background-color: #333333;
+            border-color: #555555;
+            color: #ffffff;
+        }
+        .logo {
+            position: absolute; /* Set position to absolute to position the image */
+            top: 10px; /* Adjust top positioning as needed */
+            left: 10px; /* Adjust left positioning as needed */
+            width: 100px; /* Adjust width as needed */
+            height: auto; /* Maintain aspect ratio */
+        }
+    </style>
+    <!-- Dropbox JavaScript Embed Code -->
+    <script type="text/javascript" src="https://www.dropbox.com/static/api/2/dropins.js" id="dropboxjs" data-app-key="r4mgc3y5qkqti33"></script>
+</head>
+<body>
+
+    <div class="container">
+
+        <!-- Fixed top navbar -->
+        <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ml-auto">
+                    <li class="nav-item">
+                        <button class="btn btn-secondary" onclick="location.reload()">Recharger</button>
+                    </li>
+                    {% if 'username' not in session %}
+                        <li class="nav-item">
+                            <a href="{{ url_for('signup') }}" class="btn btn-success ml-2">Inscription</a>
+                        </li>
+                        <li class="nav-item">
+                            <button class="btn btn-primary ml-2" onclick="toggleDarkMode()">Mode Sombre</button>
+                        </li>
+                        <li class="nav-item">
+                            <a href="{{ url_for('login') }}" class="btn btn-primary ml-2">Connexion</a>
+                        </li>
+                    {% else %}
+                        <li class="nav-item">
+                            <form action="{{ url_for('logout') }}" method="post">
+                                <button type="submit" class="btn btn-danger ml-2">Déconnexion</button>
+                            </form>
+                        </li>
+                        <li class="nav-item">
+                            <form action="{{ url_for('dashboard') }}" method="get">
+                                <button type="submit" class="btn btn-danger ml-2">Panneau Administrateur</button>
+                            </form>
+                        </li>
+                    {% endif %}
+                </ul>
+            </div>
+        </nav>
+
+
+        <!-- Content -->
+        <h1 class="mt-5">Bienvenue sur Winternet!</h1>
+
+        <h2>Nouveaux posts</h2>
+        <form action="{{ url_for('new_post') }}" method="post" enctype="multipart/form-data">
+            <div class="form-group">
+                <textarea class="form-control" name="text" placeholder="Votre message" required></textarea>
+            </div>
+            <div class="form-group">
+                Images: <input type="file" name="image" accept="image/*"> <!-- Add support for image upload -->
+            </div>
+            <div class="form-group">
+                Videos: <input type="file" name="video" accept="video/*"> <!-- Add support for video upload -->
+            </div>
+            <button type="submit" class="btn btn-primary">Poster</button>
+        </form>
+
+
+
+        <h2>Posts existants</h2>
+       {% for post in posts|reverse %}
+        <div class="post">
+            <!-- Display the full content of the post -->
+            <p>{{ post[0] }}</p>
+            <p>Posté par : {{ post[1] }}</p>
+
+            <!-- Display embedded Dropbox image -->
+            {% if post[3] %}
+                <iframe src="{{ post[3] }}" width="100%" height="600px" frameborder="0" allowfullscreen></iframe>
+            {% endif %}
+
+            <!-- Display embedded video -->
+            <form action="{{ url_for('delete_post', post_id=loop.revindex0) }}" method="post">
+                <button type="submit" class="btn btn-primary">Supprimer</button>
+            </form>
+            <h3>Commentaires</h3>
+            <ul class="list-group">
+                {% for comment in post[2] %}
+                    <li class="list-group-item">{{ comment[0] }} - {{ comment[1] }}</li>
+                {% endfor %}
+            </ul>
+            <form action="{{ url_for('add_comment', post_id=loop.revindex0) }}" method="post">
+                <div class="form-group">
+                    <textarea class="form-control" name="text" placeholder="Votre commentaire" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Commenter</button>
+            </form>
+        </div>
+    {% endfor %}
+    </div>
+
+    <!-- Dark mode toggle script -->
+    <script>
+        function toggleDarkMode() {
+            document.body.classList.toggle('dark-mode');
+        }
+    </script>
+</body>
+</html>
