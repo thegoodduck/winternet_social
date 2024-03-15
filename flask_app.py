@@ -19,10 +19,11 @@ app.debug = True
 app.secret_key = 'votre_clé_secrète'
 
 # Set up Dropbox access token
-DROPBOX_ACCESS_TOKEN = ''
-key = ''
-secret = ''
-refresh = ''
+#DROPBOX_ACCESS_TOKEN = 
+#key = 
+#secret = 
+#refresh = 
+#good luck with forums!!!
 
 # Initialize Dropbox client
 dbx = dropbox.Dropbox(
