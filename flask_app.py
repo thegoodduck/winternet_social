@@ -19,10 +19,10 @@ app.debug = True
 app.secret_key = 'votre_clé_secrète'
 
 # Set up Dropbox access token
-DROPBOX_ACCESS_TOKEN = 'sl.BwBZpST9Xd6_Zv5AVOES555Rml2MD2Gao8kT7GzMmeHI7qinu0z8QXKN_8uCeg6wnBnLQjbqgZv5yOhsU4kYK7VFz6ivj9w0pnr9ATW_jaAlZTvunUYBrFceClcxzVwqKU5hwjjcPXhl7XPDhMPfIb4'
-key = 'r4mgc3y5qkqti33'
-secret = 'mdxkrj7hlz4dx8x'
-refresh = 'pPy8TGzSZ3AAAAAAAAAAAeWOvYJyksv8QftZ2NMNQI_UQxfPtsmvgkjo6W67PQti'
+DROPBOX_ACCESS_TOKEN = ''
+key = ''
+secret = ''
+refresh = ''
 
 # Initialize Dropbox client
 dbx = dropbox.Dropbox(
