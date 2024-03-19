@@ -18,12 +18,12 @@ app = Flask(__name__)
 app.debug = True
 app.secret_key = 'votre_clé_secrète'
 
-# Set up Dropbox access token
-#DROPBOX_ACCESS_TOKEN = 
-#key = 
-#secret = 
-#refresh = 
-#good luck with forums!!!
+#Set up Dropbox access token
+DROPBOX_ACCESS_TOKEN = ''
+key = ''
+secret = ''
+refresh = ''
+#good luck with forums!!! for dropbox refresh
 
 # Initialize Dropbox client
 dbx = dropbox.Dropbox(
