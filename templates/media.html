@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<body>
+     <img src="{{ shared_link }}" alt="">
+     <video id="myVideo" width="620" height="540" controls autoplay loop muted style="display: none;">
+        <source src="{{ shared_link }}" type="video/mp4" alt="">
+    </video>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            var video = document.getElementById("myVideo");
+
+            video.onloadedmetadata = function() {
+                // Check if the duration of the video is greater than 0 seconds
+                if (video.duration > 0) {
+                    // If duration is greater than 0, display the video tag
+                    video.style.display = "block";
+                } else {
+                    // If duration is 0, hide the video tag
+                    video.style.display = "none";
+                }
+            };
+        });
+    </script>
+</body>
+</html>
