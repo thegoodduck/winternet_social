@@ -1,1 +1,2 @@
+#Winternet
 Winternet is a magnificent (soon) decentralized open-source social media platform. It is too uncensored. https://wi.rf.gd
