@@ -391,16 +391,31 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
+        # Validate reCAPTCHA
+        recaptcha_response = request.form.get('g-recaptcha-response')
+        recaptcha_secret = '<KEY>'
+        data = {
+            'secret': recaptcha_secret,
+            'response': recaptcha_response
+        }
+        response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
+        result = response.json()
+
+        if not result['success']:
+            return 'Veuillez compléter la vérification reCAPTCHA.'
+
         # Check if the user is locked
         if username in locked_users:
             return 'Ce compte est verrouillé. Contactez l\'administrateur pour plus d\'informations.'
-        password = hash_password(password)
+
+        hashed_password = hash_password(password)
+
         # Check credentials
         try:
             with open('users.csv', 'r') as file:
                 reader = csv.reader(file)
                 for row in reader:
-                    if row[0] == username and row[1] == password:
+                    if row[0] == username and row[1] == hashed_password:
                         session['username'] = username
                         log_action(f"Logged in: {username}")
                         return redirect('/')
@@ -427,7 +442,20 @@ def signup():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        password = hash_password(password)
+
+        # Validate reCAPTCHA
+        recaptcha_response = request.form.get('g-recaptcha-response')
+        recaptcha_secret = '<KEY>'
+        data = {
+            'secret': recaptcha_secret,
+            'response': recaptcha_response
+        }
+        response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
+        result = response.json()
+
+        if not result['success']:
+            return 'Veuillez compléter la vérification reCAPTCHA.'
+
         # Check if username is available
         try:
             with open('users.csv', 'r') as file:
@@ -439,14 +467,14 @@ def signup():
             # Add new user to users.csv
             with open('users.csv', 'a') as file:
                 writer = csv.writer(file)
-                writer.writerow([username, password])
+                writer.writerow([username, hash_password(password)])
 
             # Log in the new user
             session['username'] = username
 
             log_action(f"Signed up: {username}")
 
-            return redirect('/')
+            return '''Bienvenue sur Winternet, une plateforme dédiée à la communication et à l'interaction entre ses utilisateurs. Avant d'utiliser nos services, veuillez lire attentivement les conditions d'utilisation suivantes: Contenu Inapproprié: 1.1. Tout contenu considéré comme (trop)raciste, (trop)sexiste, (trop)homophobe ou (trop)discriminatoire sera interdit sur notre plateforme. 1.2. Nous nous réservons le droit de supprimer tout contenu qui enfreint cette politique, sans préavis ni obligation de justification. Contenu Pornographique: 2.1. La diffusion de contenu pornographique est strictement interdite sur notre plateforme. 2.2. Tout contenu à caractère pornographique sera supprimé dès sa découverte. 2.3. Nous nous réservons le droit de prendre des mesures disciplinaires à l'égard des utilisateurs qui enfreignent cette politique, y compris la résiliation de leur compte. Responsabilité de l'Utilisateur: 3.1. Les utilisateurs sont responsables du contenu qu'ils publient sur notre plateforme. 3.2. En utilisant nos services, vous acceptez de ne pas publier de contenu offensant, illégal ou contraire à nos politiques. 3.3. Vous acceptez également de respecter les droits d'auteur et les droits de propriété intellectuelle des autres utilisateurs. Signalement de Contenu: 4.1. Nous encourageons les utilisateurs à signaler tout contenu inapproprié ou offensant qu'ils rencontrent sur notre plateforme. 4.2. Nous examinerons rapidement tous les signalements et prendrons les mesures appropriées. Modification des Conditions d'Utilisation: 5.1. Nous nous réservons le droit de modifier ces conditions d'utilisation à tout moment. 5.2. Les utilisateurs seront informés des changements via notre site Web ou par d'autres moyens appropriés. 5.3. En continuant à utiliser nos services après la publication des modifications, vous acceptez les nouvelles conditions d'utilisation. En utilisant nos services, vous reconnaissez avoir lu, compris et accepté les présentes conditions d'utilisation. Si vous ne les acceptez pas, veuillez ne pas utiliser notre plateforme. License GNU GPL v3. Si vous acceptez, veuillez vous rendre sur le <a href="https://winternet.pythonanywhere.com">Site Principal.</a>'''
         except FileNotFoundError:
             return 'Fichier des utilisateurs introuvable.'
 

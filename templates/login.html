@@ -4,11 +4,13 @@
     <title>Connexion à Winternet</title>
     <!-- Bootstrap CSS -->
     <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <!-- reCAPTCHA script -->
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
     <div class="container">
         <h1>Connexion</h1>
-        <h6>Si vous n'êtes pas connecté, il faudra le faire pour certaines actions.(Il se peut que une autre de nos pages vous redirige automatiquement ici.)</h6>
+        <h6>Si vous n'êtes pas connecté, il faudra le faire pour certaines actions. (Il se peut qu'une autre de nos pages vous redirige automatiquement ici.)</h6>
         <form action="/login" method="post">
             <div class="form-group">
                 <label for="username">Nom d'utilisateur:(Utilisé durant la registration)</label>
@@ -18,6 +20,8 @@
                 <label for="password">Mot de passe:</label>
                 <input type="password" class="form-control" id="password" name="password" required>
             </div>
+            <!-- reCAPTCHA widget -->
+            <div class="g-recaptcha" data-sitekey=""></div>
             <button type="submit" class="btn btn-primary">Se connecter</button>
         </form>
         <!-- Lien vers la page d'inscription -->
@@ -30,4 +34,3 @@
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
 </body>
 </html>
-

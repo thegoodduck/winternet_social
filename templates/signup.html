@@ -5,6 +5,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- reCAPTCHA script -->
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
 </head>
 <body>
     <div class="container">
@@ -18,9 +20,11 @@
                 <label for="password">Mot de passe:</label>
                 <input type="password" class="form-control" id="password" name="password" required>
             </div>
+            <!-- reCAPTCHA widget -->
+            <div class="g-recaptcha" data-sitekey=""></div>
             <button type="submit" class="btn btn-primary">S'inscrire</button>
         </form>
-         <p>Déja inscrit? <a href="/login">Se connecter ici</a></p>
+        <p>Déjà inscrit? <a href="/login">Se connecter ici</a></p>
     </div>
 </body>
 </html>
