@@ -4,6 +4,8 @@ from werkzeug.utils import secure_filename
 import dropbox
 import datetime
 import hashlib
+import requests
+from googlesearch import search
 def hash_password(password):
     """Hashes a password using SHA-256"""
     sha256 = hashlib.sha256()
@@ -18,12 +20,11 @@ app = Flask(__name__)
 app.debug = True
 app.secret_key = 'votre_clé_secrète'
 
-#Set up Dropbox access token
-DROPBOX_ACCESS_TOKEN = ''
-key = ''
-secret = ''
-refresh = ''
-#good luck with forums!!! for dropbox refresh
+# Set up Dropbox access token
+DROPBOX_ACCESS_TOKEN = 'sl.BwBZpST9Xd6_Zv5AVOES555Rml2MD2Gao8kT7GzMmeHI7qinu0z8QXKN_8uCeg6wnBnLQjbqgZv5yOhsU4kYK7VFz6ivj9w0pnr9ATW_jaAlZTvunUYBrFceClcxzVwqKU5hwjjcPXhl7XPDhMPfIb4'
+key = 'r4mgc3y5qkqti33'
+secret = 'mdxkrj7hlz4dx8x'
+refresh = 'pPy8TGzSZ3AAAAAAAAAAAeWOvYJyksv8QftZ2NMNQI_UQxfPtsmvgkjo6W67PQti'
 
 # Initialize Dropbox client
 dbx = dropbox.Dropbox(
@@ -97,6 +98,29 @@ def log_action(action):
 
     with open('logs.txt', 'a') as log_file:
         log_file.write(log_entry)
+def search_posts(query):
+    results = []
+    with open('posts.csv', 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            post_text = row[0].lower()  # Assuming post text is in the first column
+            post_words = post_text.split()  # Splitting post text into individual words
+            query_words = query.lower().split()  # Splitting query into individual words
+            if any(word in post_words for word in query_words):
+                results.append({
+                    'text': row[0],
+                    'user': row[1],
+                    'comments': eval(row[2]),  # Assuming comments are stored as a list
+                    'image_url': row[3]
+                })
+    return results
+
+# Route for handling search requests
+@app.route('/search')
+def search_page():
+    query = request.args.get('q', '')
+    post_results = search_posts(query)  # Search posts.csv for matching posts
+    return render_template('search.html', query=query, post_results=post_results)
 @app.route('/api/login', methods=['POST'])
 def api_login():
     username = request.json.get('username')
@@ -305,7 +329,7 @@ def dashboard():
         locked_users = set()
 
     # Render the dashboard template with user data
-    return render_template('dashboard.html', users=read_users(), sudo_users=sudo_users, restricted_users=restricted_users, posts=posts, locked_users=locked_users)
+    return render_template('dashboard.html', users=read_users(), sudo_users=sudo_users, restricted_users=restricted_users, posts=posts[::-1], locked_users=locked_users)
 
 
 
@@ -393,7 +417,7 @@ def login():
 
         # Validate reCAPTCHA
         recaptcha_response = request.form.get('g-recaptcha-response')
-        recaptcha_secret = '<KEY>'
+        recaptcha_secret = '6LeoUaEpAAAAADM7HXZk9qI8CyzH8jSkJPlNnqv-'
         data = {
             'secret': recaptcha_secret,
             'response': recaptcha_response
@@ -425,6 +449,7 @@ def login():
 
     return render_template('login.html')
 
+
 # ... (existing code) ...
 
 
@@ -445,7 +470,7 @@ def signup():
 
         # Validate reCAPTCHA
         recaptcha_response = request.form.get('g-recaptcha-response')
-        recaptcha_secret = '<KEY>'
+        recaptcha_secret = '6LeoUaEpAAAAADM7HXZk9qI8CyzH8jSkJPlNnqv-'
         data = {
             'secret': recaptcha_secret,
             'response': recaptcha_response
@@ -479,8 +504,6 @@ def signup():
             return 'Fichier des utilisateurs introuvable.'
 
     return render_template('signup.html')
-
-
 @app.route('/new_post', methods=['POST'])
 def new_post():
     if 'username' not in session:
