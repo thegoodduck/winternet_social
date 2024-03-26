@@ -49,47 +49,54 @@
         <div class="container">
 
         <!-- Fixed top navbar -->
+        <!-- Fixed top navbar -->
+        <!-- Fixed top navbar -->
         <nav class="navbar navbar-expand-lg navbar-light bg-light fixed-top">
-
             <a class="navbar-brand" href="#"></a>
 
             <!-- Remove the toggler button -->
 
             <div class="navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav mr-auto">
+                    <!-- Add search form -->
+                    <li class="nav-item">
+                        <form class="form-inline my-2 my-lg-0" action="/search" method="GET">
+                            <input class="form-control mr-sm-2" type="search" placeholder="Recherche" aria-label="Search" name="q">
+                            <button class="btn btn-outline-success my-2 my-sm-0" type="submit">Recherche</button>
+                        </form>
+                    </li>
+                </ul>
                 <ul class="navbar-nav ml-auto">
                     <li class="nav-item">
                         <button class="btn btn-secondary" onclick="location.reload()">Recharger</button>
                     </li>
                     {% if 'username' not in session %}
-                        <li class="nav-item">
-                            <a href="{{ url_for('signup') }}" class="btn btn-success ml-2">Inscription</a>
-                        </li>
-                        <li class="nav-item">
-                            <button class="btn btn-primary ml-2" onclick="toggleDarkMode()">Mode Sombre</button>
-                        </li>
-                        <li class="nav-item">
-                            <a href="{{ url_for('login') }}" class="btn btn-primary ml-2">Connexion</a>
-                        </li>
+                    <li class="nav-item">
+                        <a href="{{ url_for('signup') }}" class="btn btn-success ml-2">Inscription</a>
+                    </li>
+                    <li class="nav-item">
+                        <a href="{{ url_for('login') }}" class="btn btn-primary ml-2">Connexion</a>
+                    </li>
                     {% else %}
-                        <li class="nav-item">
-                            <form action="{{ url_for('logout') }}" method="post">
-                                <button type="submit" class="btn btn-danger ml-2">Déconnexion</button>
-                            </form>
-                        </li>
-                        <li class="nav-item">
-                            <form action="{{ url_for('dashboard') }}" method="get">
-                                <button type="submit" class="btn btn-danger ml-2">Panneau Administrateur</button>
-                            </form>
-                        </li>
+                    <li class="nav-item">
+                        <form action="{{ url_for('logout') }}" method="post">
+                            <button type="submit" class="btn btn-danger ml-2">Déconnexion</button>
+                        </form>
+                    </li>
+                    <li class="nav-item">
+                        <form action="{{ url_for('dashboard') }}" method="get">
+                            <button type="submit" class="btn btn-danger ml-2">Panneau Administrateur</button>
+                        </form>
+                    </li>
                     {% endif %}
                 </ul>
             </div>
         </nav>
 
-        <h1 class="mt-5">Winternet</h1>
+
         <style>
             .spacer {
-                height: 50px; /* Adjust height as needed */
+                height: 150px; /* Adjust height as needed */
                 width: 100%; /* or specify width as needed */
                 display: block; /* Ensures the element takes up space */
             }
@@ -97,7 +104,7 @@
         <div class="spacer"></div>
         <h1 class="mt-5">Bienvenue sur Winternet!</h1>
 
-        <h2>Nouveaux posts</h2>
+        <h2>Nouveaux Wintos</h2>
         <form action="{{ url_for('new_post') }}" method="post" enctype="multipart/form-data">
             <div class="form-group">
                 <textarea class="form-control" name="text" placeholder="Votre message" required></textarea>
@@ -113,7 +120,7 @@
 
 
 
-        <h2>Posts existants</h2>
+        <h2>Wintos existants</h2>
        {% for post in posts|reverse %}
         <div class="post">
             <!-- Display the full content of the post -->
@@ -122,6 +129,7 @@
 
             <!-- Display embedded Dropbox image -->
             {% if post[3] %}
+                <h4>WinClip⬇</h4>
                 <iframe src="{{ post[3] }}" width="100%" height="600px" frameborder="0" allowfullscreen></iframe>
             {% endif %}
 
@@ -144,7 +152,33 @@
         </div>
     {% endfor %}
     </div>
+    <h1 class="mt-5">C'est tout pour le moment!!!🛑 Revenez plus tard pour plus de contenu!!!</h1>
+    Bienvenue sur Winternet, une plateforme dédiée à la communication et à l'interaction entre ses utilisateurs. Avant d'utiliser nos services, veuillez lire attentivement les conditions d'utilisation suivantes:
 
+    Contenu Inapproprié:
+    1.1. Tout contenu considéré comme (trop)raciste, (trop)sexiste, (trop)homophobe ou (trop)discriminatoire sera interdit sur notre plateforme.
+    1.2. Nous nous réservons le droit de supprimer tout contenu qui enfreint cette politique, sans préavis ni obligation de justification.
+    Contenu Pornographique:
+    2.1. La diffusion de contenu pornographique est strictement interdite sur notre plateforme.
+    2.2. Tout contenu à caractère pornographique sera supprimé dès sa découverte.
+    2.3. Nous nous réservons le droit de prendre des mesures disciplinaires à l'égard des utilisateurs qui enfreignent cette politique, y compris la résiliation de leur compte.
+
+    Responsabilité de l'Utilisateur:
+    3.1. Les utilisateurs sont responsables du contenu qu'ils publient sur notre plateforme.
+    3.2. En utilisant nos services, vous acceptez de ne pas publier de contenu offensant, illégal ou contraire à nos politiques.
+    3.3. Vous acceptez également de respecter les droits d'auteur et les droits de propriété intellectuelle des autres utilisateurs.
+
+    Signalement de Contenu:
+    4.1. Nous encourageons les utilisateurs à signaler tout contenu inapproprié ou offensant qu'ils rencontrent sur notre plateforme.
+    4.2. Nous examinerons rapidement tous les signalements et prendrons les mesures appropriées.
+
+    Modification des Conditions d'Utilisation:
+    5.1. Nous nous réservons le droit de modifier ces conditions d'utilisation à tout moment.
+    5.2. Les utilisateurs seront informés des changements via notre site Web ou par d'autres moyens appropriés.
+    5.3. En continuant à utiliser nos services après la publication des modifications, vous acceptez les nouvelles conditions d'utilisation.
+
+    En utilisant nos services, vous reconnaissez avoir lu, compris et accepté les présentes conditions d'utilisation. Si vous ne les acceptez pas, veuillez ne pas utiliser notre plateforme.
+    License GNU GPL v3
     <!-- Dark mode toggle script -->
     <script>
         function toggleDarkMode() {
