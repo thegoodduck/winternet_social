@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Search Results</title>
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Resultats de recherche pour "{{ query }}"</h1>
+        <h2>Wintos Trouvés:</h2>
+        {% for post in post_results|reverse %}
+            <div class="post">
+                <!-- Display the full content of the post -->
+                <p>{{ post.text }}</p>
+                <p>Posté par : {{ post.user }}</p>
+
+                <!-- Display embedded image -->
+                {% if post.image_url %}
+                    <iframe src="{{ post.image_url }}" width="100%" height="600px" frameborder="0" allowfullscreen></iframe>
+                {% endif %}
+
+                <!-- Display comments -->
+                <h3>Commentaires</h3>
+                <ul class="list-group">
+                    {% for comment in post.comments %}
+                        <li class="list-group-item">{{ comment[0] }} - {{ comment[1] }}</li>
+                    {% endfor %}
+                </ul>
+
+            </div>
+        {% endfor %}
+    </div>
+</body>
+</html>
