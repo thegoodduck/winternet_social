@@ -1,1 +1,1 @@
-Winternet is a magnificent (soon) decentralized open-source social media platform. It is too uncensored. https://wi.rf.gd
+Winternet is a magnificent (soon) decentralized open-source social media platform. It is too uncensored. https://wi.rf.gd Thecode hosted here is its backend without html provided. Needs: dropbox hashlib datetime
