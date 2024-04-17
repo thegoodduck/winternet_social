@@ -1,15 +1,21 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response
 import csv
 from werkzeug.utils import secure_filename
 import dropbox
 import datetime
 import hashlib
+import requests
+import ast
+import math
+import cv2
+import os
 def hash_password(password):
     """Hashes a password using SHA-256"""
     sha256 = hashlib.sha256()
     sha256.update(password.encode('utf-8'))
     return sha256.hexdigest()
 def hash_password2(password):
+    # beta branch implement in future in Winternet 2.0... Lol
     """Hashes a password using SHA-256"""
     sha256 = hashlib.sha512()
     sha256.update(password.encode('utf-8'))
@@ -17,21 +23,19 @@ def hash_password2(password):
 app = Flask(__name__)
 app.debug = True
 app.secret_key = 'votre_clé_secrète'
-
 # Set up Dropbox access token
-#DROPBOX_ACCESS_TOKEN = 
-#key = 
-#secret = 
-#refresh = 
-#good luck with forums!!!
-
+DROPBOX_ACCESS_TOKEN = ''
+key = ''
+secret = ''
+refresh = ''
+camera = cv2.VideoCapture(0)
 # Initialize Dropbox client
 dbx = dropbox.Dropbox(
     app_key=key,
     app_secret=secret,
     oauth2_refresh_token=refresh
 )
-
+# in advance, sorry for the messy code... At least you ll get a peak in the future...
 # Read existing posts from CSV
 try:
     with open('posts.csv', 'r', newline='') as file:
@@ -97,148 +101,263 @@ def log_action(action):
 
     with open('logs.txt', 'a') as log_file:
         log_file.write(log_entry)
-@app.route('/api/login', methods=['POST'])
-def api_login():
-    username = request.json.get('username')
-    password = request.json.get('password')
+def search_posts(query):
+    results = []
+    with open('posts.csv', 'r', newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        for row in reader:
+            post_text = row[0].lower()
+            user = row[1].lower()# Assuming post text is in the first column
+            post_words = post_text.split()  # Splitting post text into individual words
+            query_words = query.lower().split()  # Splitting query into individual words
+            if any(word in post_words for word in query_words) or any(word in user for word in query_words):
+                results.append({
+                    'text': row[0],
+                    'user': row[1],
+                    'comments': eval(row[2]),  # Assuming comments are stored as a list
+                    'image_url': row[3]
+                })
+    return results
+@app.route('/search')
+def search_page():
+    query = request.args.get('q', '')
+    post_results = search_posts(query)  # Search posts.csv for matching posts
+    return render_template('search.html', query=query, post_results=post_results)
+def generate_sitemap():
+    output = []
+    for rule in app.url_map.iter_rules():
+        if "GET" in rule.methods and len(rule.arguments) == 0:
+            # Create the URL for each rule
+            url = url_for(rule.endpoint, _external=True)
+            # Append the sitemap entry
+            output.append(f"""
+                <url>
+                    <loc>{url}</loc>
+                </url>
+            """)
 
-    # Check if the user is locked
-    if username in locked_users:
-        return jsonify({"error": "This account is locked."}), 403
+    sitemap_xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+    <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+        {''.join(output)}
+    </urlset>"""
 
-    password = hash_password(password)
-    # Check credentials
-    try:
-        with open('users.csv', 'r') as file:
-            reader = csv.reader(file)
-            for row in reader:
-                if row[0] == username and row[1] == password:
-                    session['username'] = username
-                    log_action(f"Logged in: {username}")
-                    return jsonify({"message": "User logged in successfully."})
-            return jsonify({"error": "Incorrect username or password."}), 401
-    except FileNotFoundError:
-        return jsonify({"error": "User database not found."}), 500
+    return sitemap_xml
+CSV_FILE = 'servers.csv'
 
+# Create the CSV file if it doesn't exist
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, 'w', newline='') as file:
+        writer = csv.writer(file)
+        # Write the header row
+        writer.writerow(['Server Address', 'Description'])
 
-@app.route('/api/logout', methods=['POST'])
-def api_logout():
-    if 'username' in session:
-        log_action(f"Logged out: {session['username']}")
-        session.pop('username', None)
-    return jsonify({"message": "User logged out successfully."})
+# Route for the pastebin
+@app.route('/pastebin', methods=['GET', 'POST'])
+def pastebin():
+    if request.method == 'POST':
+        if 'username' not in session:
+            return redirect(url_for('login'))
+        # Get the server address and description from the form
+        server_address = request.form.get('server_address')
+        description = request.form.get('description')
 
-
-@app.route('/api/signup', methods=['POST'])
-def api_signup():
-    username = request.json.get('username')
-    password = request.json.get('password')
-    password = hash_password(password)
-    # Check if username is available
-    try:
-        with open('users.csv', 'r') as file:
-            reader = csv.reader(file)
-            for row in reader:
-                if row[0] == username:
-                    return jsonify({"error": "Username already taken."}), 400
-
-        # Add new user to users.csv
-        with open('users.csv', 'a') as file:
+        # Append the server address and description to the CSV file
+        with open(CSV_FILE, 'a', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow([username, password])
+            writer.writerow([server_address, description])
+        # Redirect back to the pastebin page
+        return redirect(url_for('pastebin'))
 
-        # Log in the new user
-        session['username'] = username
+    # Read the server addresses and descriptions from the CSV file
+    pastes = []
+    with open(CSV_FILE, 'r') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip the header row
+        for row in reader:
+            pastes.append(row)
+    pastes.reverse()
 
-        log_action(f"Signed up: {username}")
+    # Render the pastebin.html template and pass the pastes list
+    return render_template('pastebin.html', pastes=pastes)
+@app.route('/view_paste/<int:index>')
+def view_paste(index):
+    # Read the specific pastebin entry from the CSV file using the index
+    pastes = []
+    with open(CSV_FILE, 'r') as file:
+        reader = csv.reader(file)
+        next(reader)  # Skip the header row
+        for row in reader:
+            pastes.append(row)
 
-        return jsonify({"message": "User signed up successfully."})
-    except FileNotFoundError:
-        return jsonify({"error": "User database not found."}), 500
+    # Ensure the index is within the range of pastes
+    if index < 0 or index >= len(pastes):
+        return "Invalid index", 404
 
-# Route to handle serving media files
-@app.route('/api/media/<filename>')
-def api_media(filename):
-    try:
-        try:
-            shared_link = dbx.files_get_temporary_link(f'/images/{filename}').link
-        except:
-            shared_link = dbx.files_get_temporary_link(f'/videos/{filename}').link
+    # Retrieve the pastebin entry based on the provided index
+    paste_entry = pastes[index]
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-    return jsonify({"shared_link": shared_link})
-
-
-@app.route('/api/delete_user/<username>', methods=['POST'])
-def api_delete_user(username):
-    if 'username' not in session or session['username'] not in sudo_users:
-        return jsonify({"error": "Unauthorized access."}), 403
-
-    users = read_users()
-    if username in users:
-        del users[username]
-        with open('users.csv', 'w', newline='') as users_file:
-            writer = csv.writer(users_file)
-            for user, password in users.items():
-                writer.writerow([user, password])
-        log_action(f"Deleted user: {username}")
-    return jsonify({"message": "User deleted successfully."})
-
-
-@app.route('/api/modify_sudo/<username>', methods=['POST'])
-def api_modify_sudo(username):
-    if 'username' not in session or session['username'] not in sudo_users:
-        return jsonify({"error": "Unauthorized access."}), 403
-
-    if username in sudo_users:
-        sudo_users.remove(username)
-        action_message = f"Removed sudo privileges from user: {username}"
+    # Render the 'view_paste.html' template and pass the paste_entry
+    return render_template('view_paste.html', server_address=paste_entry[0], description=paste_entry[1])
+# Flask route to serve the sitemap
+@app.route('/sitemap.xml')
+def sitemap():
+    sitemap_xml = generate_sitemap()
+    response = Response(sitemap_xml, mimetype='application/xml')
+    return response
+@app.route('/live_stream')
+def live_stream():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/start_stream')
+def start_stream():
+    global camera
+    if not camera.isOpened():
+        camera = cv2.VideoCapture(0)
+        return 'Camera stream started.'
     else:
-        sudo_users.add(username)
-        action_message = f"Gave sudo privileges to user: {username}"
+        return 'Camera stream already started.'
+PROFILE_FILE = 'profile.csv'
 
-    with open('sudo.csv', 'w') as sudo_file:
-        for sudo_user in sudo_users:
-            sudo_file.write(sudo_user + '\n')
+# Function to read profile data from CSV
+def read_profile(username):
+    with open(PROFILE_FILE, 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row[0] == username:
+                return {
+                    'username': row[0],
+                    'email': row[1],
+                    'full_name': row[2],
+                    'bio': row[3]
+                }
+    return None
 
-    log_action(action_message)
+# Function to write profile data to CSV
+def write_profile(profile):
+    profiles = []
+    with open(PROFILE_FILE, 'r') as file:
+        reader = csv.reader(file)
+        profiles = list(reader)
 
-    return jsonify({"message": action_message})
+    with open(PROFILE_FILE, 'w', newline='') as file:
+        writer = csv.writer(file)
+        found = False
+        for row in profiles:
+            if row[0] == profile['username']:
+                writer.writerow([profile['username'], profile['email'], profile['full_name'], profile['bio']])
+                found = True
+            else:
+                writer.writerow(row)
 
+        # If profile not found, add a new entry
+        if not found:
+            writer.writerow([profile['username'], profile['email'], profile['full_name'], profile['bio']])
 
-@app.route('/api/restrict_user/<username>', methods=['POST'])
-def api_restrict_user(username):
-    if 'username' not in session or session['username'] not in sudo_users:
-        return jsonify({"error": "Unauthorized access."}), 403
-
-    if username in restricted_users:
-        restricted_users.remove(username)
-        action_message = f"Removed restrictions from user: {username}"
+# Route to view a user's profile
+@app.route('/profile/<username>')
+def view_profile(username):
+    profile = read_profile(username)
+    if profile:
+        return render_template('profile.html', profile=profile)
     else:
-        restricted_users.add(username)
-        action_message = f"Restricted user: {username}"
+        return render_template('error.html',error_message='Pas de profil.')
 
-    with open('restricted.csv', 'w') as restricted_file:
-        for restricted_user in restricted_users:
-            restricted_file.write(restricted_user + '\n')
+# Route to edit a user's profile
+@app.route('/profile/edit', methods=['GET', 'POST'])
+def edit_profile():
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
-    log_action(action_message)
+    username = session['username']
+    profile = read_profile(username)
 
-    return jsonify({"message": action_message})
+    if request.method == 'POST':
+        email = request.form.get('email')
+        full_name = request.form.get('full_name')
+        bio = request.form.get('bio')
 
+        profile = {
+            'username': username,
+            'email': email,
+            'full_name': full_name,
+            'bio': bio
+        }
 
-@app.route('/api/')
-def api_home():
-    return jsonify({"message": "Welcome to the API."})
+        write_profile(profile)
+        return redirect(url_for('view_profile', username=username))
 
+    return render_template('edit_profile.html', profile=profile)
+
+@app.route('/stop_stream')
+def stop_stream():
+    global camera
+    if camera.isOpened():
+        camera.release()
+        cv2.destroyAllWindows()
+        return 'Camera stream stopped.'
+    else:
+        return 'Camera stream already stopped.'
+def gen_frames():
+    while True:
+        success, frame = camera.read()
+        if success:
+            ret, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        else:
+            break
 
 @app.errorhandler(404)
 def page_not_found(error):
-    return jsonify({"error": "Page not found."}), 404
+    return render_template('404.html'),404
+
+@app.route('/send_message', methods=['POST'])
+def send_message():
+    if 'username' not in session:
+        return redirect('/login')
+
+    sender = session['username']
+    receiver = request.form.get('receiver')
+    message_text = request.form.get('message_text')
+
+    message = [sender, receiver, message_text]
+
+    with open('messages.csv', 'a', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerow(message)
+    log_action(f"Sent message to {receiver}")
+    return redirect('/messages')
 
 
+
+@app.route('/messages')
+def messages():
+    if 'username' not in session:
+        return redirect('/login')
+
+    messages = []
+    with open('messages.csv', 'r', newline='') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if session['username'].lower() in (row[0].lower(), row[1].lower()):
+                messages.append(row)
+
+    return render_template('messages.html', messages=messages)
+@app.route('/new_messages', methods=['GET'])
+def new_messages():
+    if 'username' not in session:
+        return jsonify([])
+
+    new_messages = []
+    last_message_id = request.args.get('last_message_id', 0)
+
+    with open('messages.csv', 'r', newline='') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if int(row[3]) > int(last_message_id):
+                new_messages.append(row)
+
+    return jsonify(new_messages)
 @app.errorhandler(500)
 def internal_server_error(error):
     return jsonify({"error": "Internal server error."}), 500
@@ -269,7 +388,7 @@ def modify_post(post_index):
     return redirect(url_for('dashboard'))
 
 # Route to handle lock/unlock action for a specific user
-@app.route('/lock/<username>', methods=['POST'])
+@app.route('/lock/<username>', methods=['POST','GET'])
 def toggle_lock(username):
     if 'username' not in session or session['username'] not in sudo_users:
         return render_template('error.html', error_message="Vous n'êtes pas administrateurs. (Tu n'as rien à foutre ici!!!)")
@@ -305,7 +424,7 @@ def dashboard():
         locked_users = set()
 
     # Render the dashboard template with user data
-    return render_template('dashboard.html', users=read_users(), sudo_users=sudo_users, restricted_users=restricted_users, posts=posts, locked_users=locked_users)
+    return render_template('dashboard.html', users=read_users(), sudo_users=sudo_users, restricted_users=restricted_users, posts=posts[::-1], locked_users=locked_users)
 
 
 
@@ -324,6 +443,21 @@ def delete_user(username):
         log_action(f"Deleted user: {username}")
     return redirect(url_for('dashboard'))
 
+@app.route('/api/posts')
+def get_posts():
+    posts = read_posts()
+    return jsonify([{'text': post[0], 'username': post[1], 'comments': post[2], 'image_url': post[3]} for post in posts])
+
+@app.route('/api/users')
+def get_users():
+    users = read_users()
+    return jsonify(list(users.items()))
+
+@app.route('/api/search', methods=['GET'])
+def search_yes():
+    query = request.args.get('q', '')
+    results = search_posts(query)
+    return jsonify([{'text': result['text'], 'username': result['user'], 'comments': result['comments'], 'image_url': result['image_url']} for result in results])
 
 @app.route('/modify_sudo/<username>')
 def modify_sudo(username):
@@ -383,6 +517,54 @@ def home():
 
 # New route to handle locking and unlocking
 
+@app.route('/signme/<usernama>')
+def signit(usernama):
+    input_file="signed.csv"
+    variable_to_search = session['username']
+    variable_to_write = usernama
+    output_file = 'signed.csv'
+    with open(input_file, 'r') as file:
+        reader = csv.reader(file)
+        lines = list(reader)
+
+    found = False
+    for line in lines:
+        if variable_to_search in line[0]:
+            line.extend([''] * max(0, 1 - len(line)))  # Ensure there's at least one element in row 1
+            line[1] = variable_to_write
+            found = True
+            break
+
+    if not found:
+        # If search variable not found, create a new row and append it to the lines list
+        new_row = [variable_to_search, variable_to_write]
+        lines.append(new_row)
+
+    with open(output_file, 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(lines)
+    print("Variable written to signed.csv successfully.")
+
+# Example usage:
+# def signit(username,find=session['username']):
+#     def write_up(username, find):
+#         filename = 'signed.csv'
+#         with open(filename, 'r', newline='') as csvfile:
+#             reader = csv.reader(csvfile)
+#             rows = list(reader)
+#             row_index = -1  # Default index if not found
+#             for i, row in enumerate(rows):
+#                 if find in row:
+#                     row_index = i
+#                     break
+#         with open(filename, 'w', newline='') as csvfile:
+#             writer = csv.writer(csvfile)
+#             for i, row in enumerate(rows):
+#                 if i == row_index:
+#                     writer.writerow([username])
+#                 else:
+#                     writer.writerow(row)
+#     write_up(username)
 
 # Updated login route to check if the user is locked
 @app.route('/login', methods=['GET', 'POST'])
@@ -391,24 +573,50 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
 
+        # Validate reCAPTCHA
+        recaptcha_response = request.form.get('g-recaptcha-response')
+        recaptcha_secret = ''
+        data = {
+            'secret': recaptcha_secret,
+            'response': recaptcha_response
+        }
+        response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
+        result = response.json()
+
+        if not result['success']:
+            return 'Veuillez compléter la vérification reCAPTCHA.'
+
         # Check if the user is locked
         if username in locked_users:
             return 'Ce compte est verrouillé. Contactez l\'administrateur pour plus d\'informations.'
-        password = hash_password(password)
+
+        hashed_password = hash_password(password)
+
         # Check credentials
         try:
             with open('users.csv', 'r') as file:
                 reader = csv.reader(file)
                 for row in reader:
-                    if row[0] == username and row[1] == password:
+                    if row[0] == username and row[1] == hashed_password:
                         session['username'] = username
                         log_action(f"Logged in: {username}")
+                        def write_username_to_csv(username):
+                            filename = 'signed.csv'
+                            with open(filename, 'a', newline='') as csvfile:
+                                writer = csv.writer(csvfile)
+                                writer.writerow([username])
+
+                        # Example usage
+                        # write_username_to_csv(username)
+
+
                         return redirect('/')
                 return 'Nom d\'utilisateur ou mot de passe incorrect'
         except FileNotFoundError:
             return 'Fichier des utilisateurs introuvable.'
 
     return render_template('login.html')
+
 
 # ... (existing code) ...
 
@@ -424,10 +632,46 @@ def logout():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
+    inappropriate_words = [
+      # Profanity
+      "fuck", "shit", "bitch", "cunt", "damn", "pussy", "ass", "asshole", "bastard", "dick", "crap", "hell",
+      # Hate speech
+      "nigger", "chink", "spic", "kike", "fag", "dyke", "sand nigger", "raghead", "porch monkey", "coon", "gook", "jap", 'nigga',
+      # Sexual content
+      "sex", "porn", "nude", "horny", "slut", "whore", "dildo", "vibrator", "anal", "oral", "blowjob", "handjob", "threesome", "orgy",
+      # Violent content
+      "kill", "murder", "rape", "torture", "death", "blood", "gore", "violence", "terrorism", "bomb", "gun", "shoot", "stab",
+      # Illegal content
+      "drugs", "weed", "crack", "meth", "heroin", "cocaine", "ecstasy", "lsd", "pot", "marijuana", "piracy", "warez", "torrent",
+      # Offensive slurs
+      "retard", "retarded", "gay", "queer", "homo", "lesbo", "tranny", "shemale", "fat", "ugly", "stupid", "idiot", "moron", "imbecile", "cripple"
+    ]
+    def is_valid_username(username):
+      for word in inappropriate_words:
+        if word in username:
+          return False
+      return True
+
+
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
-        password = hash_password(password)
+        # Validate reCAPTCHA
+        recaptcha_response = request.form.get('g-recaptcha-response')
+        recaptcha_secret = ''
+        data = {
+            'secret': recaptcha_secret,
+            'response': recaptcha_response
+        }
+        response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
+        result = response.json()
+
+        if not result['success']:
+            return 'Veuillez compléter la vérification reCAPTCHA.'
+        if not is_valid_username(username):
+            return f'Utilisateur Bloqué pour nom utilisateur "{username}" inapproprié. Veuillez réessayer avec un autre <a href="https://winternet.pythonanywhere.com/signup">ici.</a>'
+
+
         # Check if username is available
         try:
             with open('users.csv', 'r') as file:
@@ -439,18 +683,88 @@ def signup():
             # Add new user to users.csv
             with open('users.csv', 'a') as file:
                 writer = csv.writer(file)
-                writer.writerow([username, password])
+                writer.writerow([username, hash_password(password)])
 
             # Log in the new user
             session['username'] = username
 
             log_action(f"Signed up: {username}")
 
-            return redirect('/')
+            return '''Bienvenue sur Winternet, une plateforme dédiée à la communication et à l'interaction entre ses utilisateurs. Avant d'utiliser nos services, veuillez lire attentivement les conditions d'utilisation suivantes: Contenu Inapproprié: 1.1. Tout contenu considéré comme (trop)raciste, (trop)sexiste, (trop)homophobe ou (trop)discriminatoire sera interdit sur notre plateforme. 1.2. Nous nous réservons le droit de supprimer tout contenu qui enfreint cette politique, sans préavis ni obligation de justification. Contenu Pornographique: 2.1. La diffusion de contenu pornographique est strictement interdite sur notre plateforme. 2.2. Tout contenu à caractère pornographique sera supprimé dès sa découverte. 2.3. Nous nous réservons le droit de prendre des mesures disciplinaires à l'égard des utilisateurs qui enfreignent cette politique, y compris la résiliation de leur compte. Responsabilité de l'Utilisateur: 3.1. Les utilisateurs sont responsables du contenu qu'ils publient sur notre plateforme. 3.2. En utilisant nos services, vous acceptez de ne pas publier de contenu offensant, illégal ou contraire à nos politiques. 3.3. Vous acceptez également de respecter les droits d'auteur et les droits de propriété intellectuelle des autres utilisateurs. Signalement de Contenu: 4.1. Nous encourageons les utilisateurs à signaler tout contenu inapproprié ou offensant qu'ils rencontrent sur notre plateforme. 4.2. Nous examinerons rapidement tous les signalements et prendrons les mesures appropriées. Modification des Conditions d'Utilisation: 5.1. Nous nous réservons le droit de modifier ces conditions d'utilisation à tout moment. 5.2. Les utilisateurs seront informés des changements via notre site Web ou par d'autres moyens appropriés. 5.3. En continuant à utiliser nos services après la publication des modifications, vous acceptez les nouvelles conditions d'utilisation. En utilisant nos services, vous reconnaissez avoir lu, compris et accepté les présentes conditions d'utilisation. Si vous ne les acceptez pas, veuillez ne pas utiliser notre plateforme. License GNU GPL v3. Si vous acceptez, veuillez vous rendre sur le <a href="https://winternet.pythonanywhere.com">Site Principal.</a>'''
         except FileNotFoundError:
             return 'Fichier des utilisateurs introuvable.'
 
     return render_template('signup.html')
+@app.route('/subscribe/<username>', methods=['POST','GET'])
+def subscribe(username):
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    # Check if the logged-in user is already subscribed
+    with open('subscriptions.csv', 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row[0] == session['username'] and row[1] == username:
+                return "You are already subscribed to this user."
+
+    # Add new subscription to subscriptions.csv
+    with open('subscriptions.csv', 'a') as file:
+        writer = csv.writer(file)
+        writer.writerow([session['username'], username])
+
+    return render_template('back.html')
+
+@app.route('/my_feed')
+def my_feed():
+    if 'username' not in session:
+        return redirect(url_for('login'))
+
+    # Get the subscriptions of the logged-in user
+    subscriptions = set()
+    with open('subscriptions.csv', 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row[0] == session['username']:
+                subscriptions.add(row[1])
+
+    # Get the posts of the users that the logged-in user is subscribed to and the users that they are subscribed to
+    posts = []
+    with open('posts.csv', 'r') as file:
+        reader = csv.reader(file)
+        line_number = 0
+        for row in reader:
+            line_number += 1
+            if row[1] in subscriptions or row[1] in get_subscribers(subscriptions):
+                score = 1 / (1 + math.log(line_number))  # Use logarithmic score based on line number
+                row.append(score)
+                posts.append(row)
+
+    # Apply a ranking algorithm to the posts
+    ranked_posts = []
+    for post in posts:
+        score = post[-1]  # Use the score based on line number
+        if post[1] in subscriptions:
+            score += 2  # Additional score for being a post from a directly subscribed user
+        ranked_posts.append((score, post))
+
+    # Sort the posts by their scores
+    ranked_posts.sort(reverse=True)
+
+    # Extract the posts from the tuples
+    ranked_posts = [post[:-1] for score, post in ranked_posts]
+
+    return render_template('my_feed.html', posts=ranked_posts)
+
+def get_subscribers(subscriptions):
+    subscribers = set()
+    with open('subscriptions.csv', 'r') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if row[1] in subscriptions:
+                subscribers.add(row[0])
+    return subscribers
+
+
 
 
 @app.route('/new_post', methods=['POST'])
@@ -494,7 +808,7 @@ def new_post():
         except Exception as e:
             return render_template('error.html', error_message=e)
 
-    post = [text, username, [], image_url]  # Add image and video URLs to post
+    post = [text, username, [], image_url,0,[]]  # Add image and video URLs to post
     posts.append(post)
 
     # Save new post to CSV
@@ -527,9 +841,75 @@ def add_comment(post_id):
         writer.writerows(posts)
 
     log_action(f"Added comment by: {username}")
+    return render_template('back.html')
+@app.route('/post/<int:post_id>')
+def add(post_id):
+    # Ensure comments section exists and is a list[]
+    # Save posts to CSV
+    with open('posts.csv', mode='r') as file:
+        reader = csv.reader(file)
+        for i, row in enumerate(reader):
+            if i == post_id:
+                break
+    posts=[row]
+    return render_template('post.html',posts=posts)
 
     return redirect('/')
+@app.route('/upvote/<int:post_id>', methods=['POST'])
+def upvote(post_id):
+    if 'username' not in session:
+        return redirect('/login')
 
+    username = session['username']
+
+    # Check if username is in the list of users who have upvoted
+    if isinstance(posts[post_id][5], str):
+        upvotes_list = ast.literal_eval(posts[post_id][5])
+    else:
+        upvotes_list = posts[post_id][5]
+
+    if username in upvotes_list:
+        return render_template('back.html')  # or any other appropriate action
+
+    posts[post_id][4] = str(int(posts[post_id][4]) + 1)
+    upvotes_list.append(username)
+    posts[post_id][5] = upvotes_list
+
+    # Save posts to CSV
+    with open('posts.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(posts)
+
+    log_action(f"Added upvote by: {username}")
+
+
+    return render_template('back.html')
+@app.route('/repost/<int:post_id>', methods=['POST'])
+def repost(post_id):
+    if 'username' not in session:
+        return redirect('/login')
+
+    username = session['username']
+
+    # Check if post_id is valid
+    if 0 <= post_id < len(posts):
+        # Get original post details
+        original_post = posts[post_id]
+
+        # Create a new post with original post details but with the current user's username
+        reposted_post = [original_post[0], username, original_post[2], original_post[3], 0, []]
+
+        # Add the reposted post to the posts list
+        posts.append(reposted_post)
+
+        # Save updated posts to CSV
+        with open('posts.csv', 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerows(posts)
+
+        log_action(f"Reposted post by: {username}")
+
+    return render_template('back.html')
 
 @app.route('/delete_post/<int:post_id>', methods=['POST', 'GET'])
 def delete_post(post_id):
@@ -549,7 +929,7 @@ def delete_post(post_id):
 
         log_action(f"Deleted post by: {session['username']}")
 
-    return redirect('/')
+    return render_template('back.html')
 @app.route('/media/<filename>')
 def media(filename):
     # Generate sharing link for the file
@@ -568,4 +948,5 @@ def media(filename):
 def snow():
     return render_template('snow.html')
 if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+    app.run(debug=False, port=8000)
+#Copyright Viktor Konkov 2024 version 2 Licensed GNU GPL v3
