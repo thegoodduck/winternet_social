@@ -2,9 +2,6 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
 | Version | Supported          |
 | ------- | ------------------ |
 | latest  | :white_check_mark: |
@@ -13,9 +10,4 @@ currently being supported with security updates.
 | BETA or 0.x   | :x:                |
 
 ## Reporting a Vulnerability
-
-Use this section to tell people how to report a vulnerability.
-
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+Create an issue about it or send email to fkerer40@duck.com or chat with me on Winternet itself(account needed): https://winternet.pythonanywhere.com/messages at username admin
