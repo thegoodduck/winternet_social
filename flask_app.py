@@ -665,7 +665,7 @@ def signup():
         }
         response = requests.post('https://www.google.com/recaptcha/api/siteverify', data=data)
         result = response.json()
-
+        username = escape(username)
         if not result['success']:
             return 'Veuillez compléter la vérification reCAPTCHA.'
         if not is_valid_username(username):
