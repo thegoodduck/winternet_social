@@ -1,35 +1,42 @@
-#Dedicated to Igue Batiste, a friend in Sec 1.
 from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response, escape
 import csv
 from werkzeug.utils import secure_filename
 import dropbox
 import datetime
-import hashlib 
+import hashlib
 import requests
 import ast
 import math
 import cv2
 import os
-"""
-Hashes a password using the SHA-256 algorithm.
+import random
+import string
+from collections import OrderedDict
+from markupsafe import Markup
+import time
+# TODO Add rendering of the media variably so until not scrolled its not rendered for bandwidht reduction 😂
+last_post_time = {}
+if os.path.exists('groups.csv'):
+    with open('groups.csv', 'r') as file:
+        reader = csv.reader(file)
+        groups = list(reader)
 
-Args:
-    password (str): The password to be hashed.
-
-Returns:
-    str: The hashed password as a hexadecimal string.
-"""
+# Load group posts from CSV
+if os.path.exists('group_posts.csv'):
+    with open('group_posts.csv', 'r') as file:
+        reader = csv.reader(file)
+        group_posts = list(reader)
 def hash_password(password):
     """Hashes a password using SHA-256"""
     sha256 = hashlib.sha256()
     sha256.update(password.encode('utf-8'))
     return sha256.hexdigest()
 def hash_password2(password):
-    # Future hashing with SHA-512
-    """Hashes a password using SHA-512"""
-    sha512 = hashlib.sha512()
-    sha512.update(password.encode('utf-8'))
-    return sha512.hexdigest()
+    # beta branch implement in future in Winternet 2.0... Lol
+    """Hashes a password using SHA-256"""
+    sha256 = hashlib.sha512()
+    sha256.update(password.encode('utf-8'))
+    return sha256.hexdigest()
 app = Flask(__name__)
 app.debug = True
 app.secret_key = 'votre_clé_secrète'
@@ -45,7 +52,7 @@ dbx = dropbox.Dropbox(
     app_secret=secret,
     oauth2_refresh_token=refresh
 )
-# in advance, sorry for the messy code... At least you ll get a peak in the future...
+
 # Read existing posts from CSV
 try:
     with open('posts.csv', 'r', newline='') as file:
@@ -78,30 +85,17 @@ try:
         locked_users = set(locked_file.read().splitlines())
 except FileNotFoundError:
     pass  # Handle the case where the file doesn't exist
-# Read existing users from users.csv
-"""
-Reads user data from the 'users.csv' file and returns a dictionary mapping usernames to passwords.
 
-If the 'users.csv' file is not found, an empty dictionary is returned.
-"""
 def read_users():
     try:
         with open('users.csv', 'r') as users_file:
             reader = csv.reader(users_file)
-            users = {row[0]: row[1] for row in reader}
+            users = OrderedDict((row[0], row[1]) for row in reader)
     except FileNotFoundError:
-        users = {}
+        users = OrderedDict()
     return users
 
-
 # Read posts from posts.csv
-"""Reads the contents of the 'posts.csv' file and returns a list of post data.
-
-If the 'posts.csv' file is not found, an empty list is returned.
-
-Returns:
-    list: A list of post data, where each element is a list representing a row from the 'posts.csv' file.
-"""
 def read_posts():
     try:
         with open('posts.csv', 'r', newline='') as posts_file:
@@ -113,14 +107,6 @@ def read_posts():
 
 
 # Define a function to log actions
-"""
-Logs an action to a text file.
-
-This function logs an action to a text file named 'logs.txt'. It records the timestamp, IP address, username (if available), the action performed, and the user agent string.
-
-Args:
-    action (str): The action to be logged.
-"""
 def log_action(action):
     timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     ip_address = request.remote_addr
@@ -131,15 +117,6 @@ def log_action(action):
 
     with open('logs.txt', 'a') as log_file:
         log_file.write(log_entry)
-"""
-Search for posts in the 'posts.csv' file that match the given query.
-
-Args:
-    query (str): The search query to match against post text and user names.
-
-Returns:
-    list[dict]: A list of dictionaries representing the matching posts, with keys for 'text', 'user', 'comments', and 'image_url'.
-"""
 def search_posts(query):
     results = []
     with open('posts.csv', 'r', newline='', encoding='utf-8') as csvfile:
@@ -157,14 +134,29 @@ def search_posts(query):
                     'image_url': row[3]
                 })
     return results
-"""
-Generates a sitemap XML document for the Flask application.
+@app.route('/logs', methods=['GET', 'POST'])
+def logread():
+    if 'username' not in session or session['username'] not in sudo_users:
+        return redirect(url_for('login'))
+    query = None
+    results = []
 
-The sitemap includes all routes in the application that have no arguments and can be accessed via GET requests. The sitemap is generated dynamically based on the application's URL map.
+    # Read the logs from logs.txt
+    with open('logs.txt', 'r') as file:
+        logs = file.readlines()[::-1]
 
-Returns:
-    str: The sitemap XML document.
-"""
+    if request.method == 'POST':
+        query = request.form['search']
+        # Filter the logs based on the query
+        results = [log for log in logs if query.lower() in log.lower()]
+    else:
+        # Show all logs if no search query is entered
+        results = logs
+
+    return render_template('logs.html', logs=results, query=query)
+@app.route('/credits')
+def credits():
+    return render_template('credits.html')
 @app.route('/search')
 def search_page():
     query = request.args.get('q', '')
@@ -192,11 +184,6 @@ def generate_sitemap():
 CSV_FILE = 'servers.csv'
 
 # Create the CSV file if it doesn't exist
-"""
-Ensures that the CSV file used to store pastebin entries exists and creates it with a header row if it does not.
-
-The CSV file is used to store the server addresses and descriptions for pastebin entries. This code checks if the file exists, and if not, creates it with a header row to store the data.
-"""
 if not os.path.exists(CSV_FILE):
     with open(CSV_FILE, 'w', newline='') as file:
         writer = csv.writer(file)
@@ -204,13 +191,6 @@ if not os.path.exists(CSV_FILE):
         writer.writerow(['Server Address', 'Description'])
 
 # Route for the pastebin
-"""
-Handles the pastebin functionality of the Flask application.
-
-The `pastebin()` function is responsible for handling both the GET and POST requests for the pastebin page. When a GET request is received, it reads the server addresses and descriptions from a CSV file and renders the `pastebin.html` template with the data. When a POST request is received, it checks if the user is logged in, retrieves the server address and description from the form, and appends them to the CSV file.
-
-The `view_paste()` function is responsible for rendering the `view_paste.html` template with the details of a specific pastebin entry, based on the provided index.
-"""
 @app.route('/pastebin', methods=['GET', 'POST'])
 def pastebin():
     if request.method == 'POST':
@@ -236,31 +216,19 @@ def pastebin():
             pastes.append(row)
     pastes.reverse()
 
+    # Count the number of times each link has been clicked
+    link_clicks = {}
+    for paste in pastes:
+        link = paste[0]
+        link_clicks[link] = link_clicks.get(link, 0) + 1
+
+    # Sort pastes by number of clicks in descending order
+    pastes.sort(key=lambda x: link_clicks.get(x[0], 0), reverse=True)
+
     # Render the pastebin.html template and pass the pastes list
     return render_template('pastebin.html', pastes=pastes)
-"""
-Generates the sitemap.xml file for the Flask application.
-
-This route is responsible for generating the sitemap.xml file, which is a file that
-provides a structured list of the URLs on a website. The sitemap is used by search
-engines to better understand the structure and content of the website, which can
-improve the website's visibility in search results.
-
-The `generate_sitemap()` function is called to generate the XML content for the
-sitemap, and the resulting XML is returned as the response with the appropriate
-content type.
-"""
 @app.route('/view_paste/<int:index>')
 def view_paste(index):
-    """
-    Retrieves a specific pastebin entry from a CSV file based on the provided index.
-
-    Args:
-        index (int): The index of the pastebin entry to retrieve.
-
-    Returns:
-        str: The pastebin entry if the index is valid, or an error message and 404 status code if the index is invalid.
-    """
     # Read the specific pastebin entry from the CSV file using the index
     pastes = []
     with open(CSV_FILE, 'r') as file:
@@ -279,27 +247,19 @@ def view_paste(index):
     # Render the 'view_paste.html' template and pass the paste_entry
     return render_template('view_paste.html', server_address=paste_entry[0], description=paste_entry[1])
 # Flask route to serve the sitemap
+@app.errorhandler(500)
+def ouch():
+    return render_template('error.html')
 @app.route('/sitemap.xml')
 def sitemap():
     sitemap_xml = generate_sitemap()
     response = Response(sitemap_xml, mimetype='application/xml')
     return response
-@app.route('/live_stream')
+#@app.route('/live_stream')
 def live_stream():
-    """
-    Generates a live video stream response for the Flask application.
-    
-    This function is responsible for generating the frames of the live video stream and returning a Response object that can be used to stream the video to the client. The Response object is configured to use the 'multipart/x-mixed-replace; boundary=frame' content type, which allows the client to continuously receive new frames as they are generated.
-    """
     return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-@app.route('/start_stream')
+#@app.route('/start_stream')
 def start_stream():
-    """
-    Starts the camera stream if it is not already open, and returns a message indicating the stream status.
-    
-    Returns:
-        str: A message indicating whether the camera stream was started or is already running.
-    """
     global camera
     if not camera.isOpened():
         camera = cv2.VideoCapture(0)
@@ -309,15 +269,6 @@ def start_stream():
 PROFILE_FILE = 'profile.csv'
 
 # Function to read profile data from CSV
-"""
-Reads a user profile from a CSV file.
-
-Args:
-    username (str): The username of the user whose profile should be read.
-
-Returns:
-    dict or None: A dictionary containing the user's profile information, or None if the user's profile is not found.
-"""
 def read_profile(username):
     with open(PROFILE_FILE, 'r') as file:
         reader = csv.reader(file)
@@ -332,15 +283,6 @@ def read_profile(username):
     return None
 
 # Function to write profile data to CSV
-"""
-Writes a user profile to a CSV file.
-
-Args:
-    profile (dict): A dictionary containing the user's profile information, including username, email, full name, and bio.
-
-Returns:
-    None
-"""
 def write_profile(profile):
     profiles = []
     with open(PROFILE_FILE, 'r') as file:
@@ -364,15 +306,6 @@ def write_profile(profile):
 # Route to view a user's profile
 @app.route('/profile/<username>')
 def view_profile(username):
-    """
-    Renders the profile page for the given username.
-
-    Args:
-        username (str): The username of the user whose profile should be displayed.
-
-    Returns:
-        A rendered template for the profile page, or a rendered template for an error page if no profile is found.
-    """
     profile = read_profile(username)
     if profile:
         return render_template('profile.html', profile=profile)
@@ -382,13 +315,6 @@ def view_profile(username):
 # Route to edit a user's profile
 @app.route('/profile/edit', methods=['GET', 'POST'])
 def edit_profile():
-    """
-    Allows the user to edit their profile information, including email, full name, and bio.
-
-    If the user is not logged in, they are redirected to the login page.
-
-    When the user submits the edit profile form, the profile information is updated and the user is redirected to their profile page.
-    """
     if 'username' not in session:
         return redirect(url_for('login'))
 
@@ -414,12 +340,6 @@ def edit_profile():
 
 @app.route('/stop_stream')
 def stop_stream():
-    """
-Stops the camera stream and releases the camera resources.
-
-Returns:
-    str: A message indicating whether the camera stream was stopped or was already stopped.
-"""
     global camera
     if camera.isOpened():
         camera.release()
@@ -427,14 +347,6 @@ Returns:
         return 'Camera stream stopped.'
     else:
         return 'Camera stream already stopped.'
-"""
-Generates a continuous stream of JPEG frames from the camera.
-
-This function reads frames from the camera, encodes them as JPEG images, and yields them as a continuous stream of bytes. The function is designed to be used in a web application to display a live video feed.
-
-Yields:
-    bytes: A continuous stream of JPEG-encoded frames from the camera.
-"""
 def gen_frames():
     while True:
         success, frame = camera.read()
@@ -448,24 +360,10 @@ def gen_frames():
 
 @app.errorhandler(404)
 def page_not_found(error):
-    """
-Handles the 404 error page for the Flask application.
-
-This function is registered as the error handler for 404 errors. When a 404 error occurs, this function will be called to render the '404.html' template and return the response with a 404 status code.
-"""
     return render_template('404.html'),404
 
 @app.route('/send_message', methods=['POST'])
 def send_message():
-    """
-Sends a message from the current user to the specified receiver.
-
-If the user is not logged in, redirects to the login page.
-
-Otherwise, retrieves the sender's username from the session, gets the receiver and message text from the form data, and appends a new message row to the 'messages.csv' file.
-
-Finally, logs the action and redirects the user to the '/messages' route.
-"""
     if 'username' not in session:
         return redirect('/login')
 
@@ -481,19 +379,8 @@ Finally, logs the action and redirects the user to the '/messages' route.
     log_action(f"Sent message to {receiver}")
     return redirect('/messages')
 
-
-
 @app.route('/messages')
 def messages():
-    """
-Retrieves and displays the messages for the currently logged-in user.
-
-This function reads the messages.csv file and returns a list of messages where the
-current user's username is either the sender or the recipient. The messages are
-then rendered in the messages.html template.
-
-If the user is not logged in, they are redirected to the login page.
-"""
     if 'username' not in session:
         return redirect('/login')
 
@@ -505,51 +392,12 @@ If the user is not logged in, they are redirected to the login page.
                 messages.append(row)
 
     return render_template('messages.html', messages=messages)
-@app.route('/new_messages', methods=['GET'])
-def new_messages():
-    """
-Retrieves new messages that have been added since the last message ID provided.
-
-If the user is not logged in, returns an empty list.
-
-Otherwise, reads the messages.csv file and returns a list of new messages (rows from the file) where the message ID is greater than the last message ID provided.
-
-Args:
-    last_message_id (int): The ID of the last message the client has received.
-
-Returns:
-    list: A list of new messages as rows from the messages.csv file.
-"""
-    if 'username' not in session:
-        return jsonify([])
-
-    new_messages = []
-    last_message_id = request.args.get('last_message_id', 0)
-
-    with open('messages.csv', 'r', newline='') as file:
-        reader = csv.reader(file)
-        for row in reader:
-            if int(row[3]) > int(last_message_id):
-                new_messages.append(row)
-
-    return jsonify(new_messages)
 @app.errorhandler(500)
 def internal_server_error(error):
     return jsonify({"error": "Internal server error."}), 500
 
 @app.route('/modify_post/<int:post_index>', methods=['POST'])
 def modify_post(post_index):
-    """
-Modifies the details of a post in the application.
-
-This function is responsible for updating the text, username, and image of a post in the application. It retrieves the post at the specified index, updates the relevant fields, and writes the updated posts back to the posts.csv file. The function also logs the action of modifying the post.
-
-Args:
-    post_index (int): The index of the post to be modified.
-
-Returns:
-    A redirect to the dashboard page.
-"""
     if 'username' not in session or session['username'] not in sudo_users:
         return redirect(url_for('login'))
 
@@ -686,6 +534,30 @@ def restrict_user(username):
 
     return redirect(url_for('dashboard'))
 
+@app.route('/metadata/postid/<int:post_id>')
+def metadata_postid(post_id):
+    # Check if the user is logged in and is an administrator
+    if 'username' not in session or session['username'] not in sudo_users:
+        # Redirect to login page if not logged in or not an administrator
+        return render_template('error.html', error_message="Vous n'etes pas administrateurs. (Tu n'as rien a foutre ici!!!)")
+
+    # Ensure comments section exists and is a list[]
+    # Save posts to CSV
+    posts = []
+    with open('posts.csv', mode='r') as file:
+        reader = csv.reader(file)
+        for i, row in enumerate(reader):
+            if i == post_id:
+                posts.append(row)
+                break
+
+    # Check if the posts list is empty
+    if not posts:
+        # Handle the case when no post with the specified ID is found
+        return render_template('error.html', error_message="Post not found")
+
+    # Assuming you have a bootstrap template for displaying posts
+    return render_template('meta.html', posts=posts)
 
 @app.route('/')
 def home():
@@ -696,9 +568,13 @@ def home():
             restricted_post = ["Vous êtes en mode restreint", session['username'], [], None]
             user_posts.append(restricted_post)
             return render_template('index.html', posts=user_posts)
+    if 'username' not in session:
+        return render_template('welcome.html')
     return render_template('index.html', posts=posts)
 
-
+@app.route('/view-mode')
+def home_view():
+    return render_template('index.html',posts=posts)
 # ... (existing code) ...
 
 # New route to handle locking and unlocking
@@ -818,24 +694,8 @@ def logout():
 
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    inappropriate_words = [
-      # Profanity
-      "fuck", "shit", "bitch", "cunt", "damn", "pussy", "ass", "asshole", "bastard", "dick", "crap", "hell",
-      # Hate speech
-      "nigger", "chink", "spic", "kike", "fag", "dyke", "sand nigger", "raghead", "porch monkey", "coon", "gook", "jap", 'nigga',
-      # Sexual content
-      "sex", "porn", "nude", "horny", "slut", "whore", "dildo", "vibrator", "anal", "oral", "blowjob", "handjob", "threesome", "orgy",
-      # Violent content
-      "kill", "murder", "rape", "torture", "death", "blood", "gore", "violence", "terrorism", "bomb", "gun", "shoot", "stab",
-      # Illegal content
-      "drugs", "weed", "crack", "meth", "heroin", "cocaine", "ecstasy", "lsd", "pot", "marijuana", "piracy", "warez", "torrent",
-      # Offensive slurs
-      "retard", "retarded", "gay", "queer", "homo", "lesbo", "tranny", "shemale", "fat", "ugly", "stupid", "idiot", "moron", "imbecile", "cripple"
-    ]
     def is_valid_username(username):
-      for word in inappropriate_words:
-        if word in username:
-          return False
+        # bad arch spagethi code........
       return True
 
 
@@ -900,6 +760,7 @@ def subscribe(username):
 
     return render_template('back.html')
 
+
 @app.route('/my_feed')
 def my_feed():
     if 'username' not in session:
@@ -925,21 +786,42 @@ def my_feed():
                 row.append(score)
                 posts.append(row)
 
-    # Apply a ranking algorithm to the posts
-    ranked_posts = []
-    for post in posts:
-        score = post[-1]  # Use the score based on line number
-        if post[1] in subscriptions:
-            score += 2  # Additional score for being a post from a directly subscribed user
-        ranked_posts.append((score, post))
+    # Read the messages and format them
+    messages = []
+    with open('messages.csv', 'r', newline='') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if session['username'].lower() in (row[0].lower(), row[1].lower()):
+                formatted_message = f"Utilisateur @{row[0]} vous a envoyé '{row[2]}'"
+                messages.append([formatted_message])
 
-    # Sort the posts by their scores
-    ranked_posts.sort(reverse=True)
+    # Shuffle posts initially
 
-    # Extract the posts from the tuples
-    ranked_posts = [post[:-1] for score, post in ranked_posts]
+    # Insert messages individually at random positions in the posts
+    #for message in messages:
+        #position = random.randint(0, len(posts))
+       # posts.insert(position, message)
 
-    return render_template('my_feed.html', posts=ranked_posts)
+    # Apply a ranking algorithm to the combined feed
+    ranked_feed = []
+    for item in posts:
+        if len(item) > 1:
+            # It's a post
+            score = item[-1]  # Use the score based on line number
+            if item[1] in subscriptions:
+                score += 2  # Additional score for being a post from a directly subscribed user
+        else:
+            # It's a message
+            score = 1  # Default score for messages
+        ranked_feed.append((score, item))
+
+    # Sort the feed by their scores
+    ranked_feed.sort(reverse=True, key=lambda x: x[0])
+
+    # Extract the posts and messages from the tuples
+    ranked_feed = [item for score, item in ranked_feed]
+
+    return render_template('my_feed.html', posts=ranked_feed)
 
 def get_subscribers(subscriptions):
     subscribers = set()
@@ -951,18 +833,60 @@ def get_subscribers(subscriptions):
     return subscribers
 
 
+failed_attempts = {}
 
-
+# Constants for timing (in seconds)
+POST_LIMIT = 30
+EXTENDED_LIMIT = 5 * 60
+min_char=30
 @app.route('/new_post', methods=['POST'])
 def new_post():
+    # Check if the user is logged in
     if 'username' not in session:
         return redirect('/login')
 
-    text = request.form.get('text')
     username = session['username']
+
+    # Get current time
+    current_time = time.time()
+
+    # Check if the user has posted recently
+    if username in last_post_time:
+        time_since_last_post = current_time - last_post_time[username]
+
+        # Check if the user is in extended block period (after 3 failed attempts)
+        if failed_attempts.get(username, 0) >= 3:
+            if time_since_last_post < EXTENDED_LIMIT:
+                return render_template('error.html', error_message="You are restricted from posting for 5 minutes due to multiple attempts.")
+            else:
+                # Reset the failed attempts after the 5-minute block
+                failed_attempts[username] = 0
+        # Check the regular 30-second limit
+        elif time_since_last_post < POST_LIMIT:
+            # Increment failed attempt count
+            failed_attempts[username] = failed_attempts.get(username, 0) + 1
+
+            # If the user has failed 3 times, impose a 5-minute block
+            if failed_attempts[username] >= 3:
+                return render_template('error.html', error_message="You are now restricted for 5 minutes due to multiple attempts.")
+            else:
+                return render_template('error.html', error_message=f"Please wait {POST_LIMIT - int(time_since_last_post)} seconds before posting again.")
+
+    # Reset failed attempts on a successful post
+    failed_attempts[username] = 0
+
+    # Update the user's last post time
+    last_post_time[username] = current_time
+
+    # Get form data
+    text = request.form.get('text')
     image = request.files.get('image')
-    video = request.files.get('video')  # Get the uploaded video file
+    video = request.files.get('video')
     image_url = None
+    if len(text.replace(" ", ""))<min_char:
+        return render_template('error.html', error_message="Minimum 30 chars.")
+    # Check if the post should be anonymous
+    anonymous_mode = request.form.get('anonymous') == 'on'
 
     # Upload image to Dropbox
     if image:
@@ -975,7 +899,7 @@ def new_post():
             image_shared_link = dbx.sharing_create_shared_link(f'/images/{image_filename}').url
 
             # Modify the image URL to use /media route
-            image_url = f"https://winternet.pythonanywhere.com"+"/media/"+image_filename
+            image_url = f"https://winternet.pythonanywhere.com" + "/media/" + image_filename
         except Exception as e:
             return render_template('error.html', error_message=e)
 
@@ -990,11 +914,18 @@ def new_post():
             video_shared_link = dbx.sharing_create_shared_link(f'/videos/{video_filename}').url
 
             # Modify the video URL to use /media route
-            image_url = f'https://winternet.pythonanywhere.com'+"/media/"+video_filename
+            image_url = f'https://winternet.pythonanywhere.com' + "/media/" + video_filename
         except Exception as e:
             return render_template('error.html', error_message=e)
 
-    post = [text, username, [], image_url,0,[]]  # Add image and video URLs to post
+    # If in anonymous mode, set username to "Anonyme"
+    if anonymous_mode:
+        username = "Anonyme"
+
+    # Create post
+    post = [text, username, [], image_url, 0, [], session['username']]
+
+    # Append post to list of posts
     posts.append(post)
 
     # Save new post to CSV
@@ -1004,7 +935,177 @@ def new_post():
 
     log_action(f"Added new post by: {username}")
 
+    # Redirect to homepage
     return redirect('/')
+def load_groups():
+    """Load groups from CSV file."""
+    if os.path.exists('groups.csv'):
+        with open('groups.csv', 'r') as file:
+            reader = csv.reader(file)
+            return list(reader)
+    return []
+
+groups = load_groups()
+
+def save_groups():
+    """Save groups to CSV file."""
+    with open('groups.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(groups)
+
+# Load group posts from CSV
+def load_group_posts():
+    """Load group posts from CSV file."""
+    group_posts = []
+    if os.path.exists('group_posts.csv'):
+        with open('group_posts.csv', 'r') as file:
+            reader = csv.reader(file)
+            group_posts = list(reader)
+    return group_posts
+
+# Load group members from CSV
+def load_group_members():
+    """Load group members from CSV file."""
+    members = []
+    if os.path.exists('group_members.csv'):
+        with open('group_members.csv', 'r') as file:
+            reader = csv.reader(file)
+            members = list(reader)
+    return members
+
+def save_group_members(members):
+    """Save group members to CSV file."""
+    with open('group_members.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(members)
+
+@app.route('/create_group', methods=['POST'])
+def create_group():
+    if 'username' not in session:
+        return redirect('/login')
+
+    group_name = request.form.get('group_name')
+    description = request.form.get('description')
+    group_type = request.form.get('group_type')  # 'public' or 'private'
+    creator = session['username']
+
+    group = [group_name, description, group_type, creator]
+    groups.append(group)
+    save_groups()
+
+    # Automatically add the creator as a member of the group
+    members = load_group_members()
+    members.append([group_name, creator])
+    save_group_members(members)
+
+    return redirect('/groups')
+
+@app.route('/groups')
+def view_groups():
+    if 'username' not in session:
+        return redirect('/login')
+    """Display all groups or search results."""
+    query = request.args.get('query', '')
+    filtered_groups = [group for group in groups if query.lower() in group[0].lower() or query.lower() in group[1].lower()]
+
+    return render_template('groups.html', groups=filtered_groups, query=query)
+
+@app.route('/group/<group_name>/')
+def view_group(group_name):
+    if 'username' not in session:
+        return redirect('/login')
+    """Display details of a specific group."""
+    # Retrieve the group details
+    group = next((g for g in groups if g[0] == group_name), None)
+    if not group:
+        return render_template('error.html', error_message="Group not found")
+
+    # Access control: Check if the group is private and the user is not the creator or a member
+    members = load_group_members()
+    is_member = any(m[0] == group_name and m[1] == session.get('username') for m in members)
+    if group[2] == 'private' and not is_member and session.get('username') != group[3]:
+        return render_template('error.html', error_message="Vous ne pouvez pas acceder ce groupe. Il est privé.")
+
+    # Load group posts
+    group_posts = load_group_posts()
+    group_posts_filtered = [post for post in group_posts if post[6] == group_name]
+    group_posts_filtered.reverse()
+
+    # Pass the group details to the template
+    return render_template('group.html', group_name=group_name, group=group, posts=group_posts_filtered)
+
+
+@app.route('/group/<group_name>/post', methods=['POST'])
+def new_group_post(group_name):
+    if 'username' not in session:
+        return redirect('/login')
+
+    group = next((g for g in groups if g[0] == group_name), None)
+    if not group:
+        return render_template('error.html', error_message="Group not found")
+
+    # Access control: Check if the group is private and the user is not the creator or a member
+    members = load_group_members()
+    is_member = any(m[0] == group_name and m[1] == session.get('username') for m in members)
+    if group[2] == 'private' and not is_member and session.get('username') != group[3]:
+        return render_template('error.html', error_message="Vous ne pouvez pas acceder ce groupe. Il est privé.")
+
+    group_posts = load_group_posts()
+    text = request.form.get('text')
+    username = session['username']
+    image_url = None
+
+    anonymous_mode = request.form.get('anonymous') == 'on'
+
+    if anonymous_mode:
+        username = "Anonyme"
+
+    post = [text, username, [], image_url, 0, [], group_name]
+    group_posts.append(post)
+
+    with open('group_posts.csv', 'w', newline='') as file:
+        writer = csv.writer(file)
+        writer.writerows(group_posts)
+
+    return redirect(f'/group/{group_name}')
+
+@app.route('/group/<group_name>/add_member', methods=['POST'])
+def add_member(group_name):
+    """Add a user to a private group."""
+    if 'username' not in session:
+        return redirect('/login')
+
+    group = next((g for g in groups if g[0] == group_name), None)
+    if not group:
+        return render_template('error.html', error_message="Group not found")
+
+    # Only the creator can add members to the private group
+    if session['username'] != group[3]:
+        return render_template('error.html', error_message="Only the creator can add members.")
+
+    new_member = request.form.get('new_member')
+    members = load_group_members()
+
+    # Check if the user is already a member
+    if any(m[0] == group_name and m[1] == new_member for m in members):
+        return render_template('error.html', error_message="User is already a member of the group.")
+
+    members.append([group_name, new_member])
+    save_group_members(members)
+
+    return redirect(f'/group/{group_name}')
+
+@app.route('/search_groups', methods=['GET'])
+def search_groups():
+    beta = True
+    if beta:
+        return render_template('error.html', error_message='La fonction est pas prete a être utilisée')
+    """Route for searching groups."""
+    query = request.args.get('query', '')
+    results = [group for group in groups if query.lower() in group[0].lower() or query.lower() in group[1].lower()]
+
+    return render_template('search.html', groups=results)
+
 
 
 @app.route('/comment/<int:post_id>', methods=['POST'])
@@ -1053,7 +1154,8 @@ def upvote(post_id):
         upvotes_list = ast.literal_eval(posts[post_id][5])
     else:
         upvotes_list = posts[post_id][5]
-
+    if session['username'] in posts[post_id][1]:
+        return render_template('back.html')
     if username in upvotes_list:
         return render_template('back.html')  # or any other appropriate action
 
@@ -1130,9 +1232,8 @@ def media(filename):
 
     # Render a blank page with the embedded link
     return render_template('media.html', shared_link=shared_link)
-@app.route('/tor.snow')
+@app.route('/tor_snow')
 def snow():
     return render_template('snow.html')
 if __name__ == '__main__':
     app.run(debug=False, port=8000)
-#Copyright Viktor Konkov 2024 version 2 Licensed GNU GPL v3
