@@ -1,4 +1,7 @@
-from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response, escape
+################################
+#          IMPORTS             #
+################################
+from flask import Flask, render_template, request, session, redirect, url_for, jsonify, Response, flash
 import csv
 from werkzeug.utils import secure_filename
 import dropbox
@@ -7,55 +10,55 @@ import hashlib
 import requests
 import ast
 import math
-import cv2
 import os
-import random
 import string
 from collections import OrderedDict
-from markupsafe import Markup
+from markupsafe import Markup, escape
 import time
+import threading
+import json
+
 # TODO Add rendering of the media variably so until not scrolled its not rendered for bandwidht reduction 😂
+
 last_post_time = {}
+
+
 if os.path.exists('groups.csv'):
-    with open('groups.csv', 'r') as file:
+    with open('groups.csv', mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         groups = list(reader)
 
 # Load group posts from CSV
 if os.path.exists('group_posts.csv'):
-    with open('group_posts.csv', 'r') as file:
+    with open('group_posts.csv', mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         group_posts = list(reader)
-def hash_password(password):
-    """Hashes a password using SHA-256"""
-    sha256 = hashlib.sha256()
-    sha256.update(password.encode('utf-8'))
-    return sha256.hexdigest()
-def hash_password2(password):
-    # beta branch implement in future in Winternet 2.0... Lol
-    """Hashes a password using SHA-256"""
-    sha256 = hashlib.sha512()
-    sha256.update(password.encode('utf-8'))
-    return sha256.hexdigest()
+
+#######################################
+#               CONF                  #
+#######################################
 app = Flask(__name__)
 app.debug = True
-app.secret_key = 'votre_clé_secrète'
+app.secret_key = 'super secret key'
+
 # Set up Dropbox access token
 DROPBOX_ACCESS_TOKEN = ''
 key = ''
 secret = ''
 refresh = ''
-camera = cv2.VideoCapture(0)
+
 # Initialize Dropbox client
 dbx = dropbox.Dropbox(
     app_key=key,
     app_secret=secret,
     oauth2_refresh_token=refresh
 )
-
+###########################################
+#               FILE RELATED               #
+###########################################
 # Read existing posts from CSV
 try:
-    with open('posts.csv', 'r', newline='') as file:
+    with open('posts.csv', mode='r', encoding='utf-8', newline='') as file:
         reader = csv.reader(file)
         posts = []
         for row in reader:
@@ -66,14 +69,14 @@ except FileNotFoundError:
     posts = []
 
 try:
-    with open('restricted.csv', 'r') as restricted_file:
+    with open('restricted.csv', mode='r', encoding='utf-8') as restricted_file:
         restricted_users = set(row.strip() for row in restricted_file)
 except FileNotFoundError:
     restricted_users = set()
 
 # Read sudo users from sudo.csv
 try:
-    with open('sudo.csv', 'r') as sudo_file:
+    with open('sudo.csv', mode='r', encoding='utf-8') as sudo_file:
         sudo_users = set(row.strip() for row in sudo_file)
 except FileNotFoundError:
     sudo_users = set()
@@ -81,14 +84,14 @@ locked_users = set()
 
 # Load locked users from locked.csv
 try:
-    with open('locked.csv', 'r') as locked_file:
+    with open('locked.csv', mode='r', encoding='utf-8') as locked_file:
         locked_users = set(locked_file.read().splitlines())
 except FileNotFoundError:
     pass  # Handle the case where the file doesn't exist
 
 def read_users():
     try:
-        with open('users.csv', 'r') as users_file:
+        with open('users.csv', mode='r', encoding='utf-8') as users_file:
             reader = csv.reader(users_file)
             users = OrderedDict((row[0], row[1]) for row in reader)
     except FileNotFoundError:
@@ -98,42 +101,64 @@ def read_users():
 # Read posts from posts.csv
 def read_posts():
     try:
-        with open('posts.csv', 'r', newline='') as posts_file:
+        with open('posts.csv', mode='r', encoding='utf-8', newline='') as posts_file:
             reader = csv.reader(posts_file)
             posts = [row for row in reader]
     except FileNotFoundError:
         posts = []
     return posts
+################################
+#           DEFINITIONS        #
+################################
 
+class DataClass:
+    @staticmethod
+    def hash_password(password):
+        """Hashes a password using SHA-256"""
+        sha256 = hashlib.sha256()
+        sha256.update(password.encode('utf-8'))
+        return sha256.hexdigest()
+    @staticmethod
+    def hash_password2(password):
+        # beta branch implement in future in Winternet 2.0... Lol
+        """Hashes a password using SHA-512"""
+        sha256 = hashlib.sha512()
+        sha256.update(password.encode('utf-8'))
+        return sha256.hexdigest()
 
-# Define a function to log actions
-def log_action(action):
-    timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    ip_address = request.remote_addr
-    user_agent = request.user_agent.string
-    user = session.get('username', 'Unknown')
+    @staticmethod
+    def log_action(action):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ip_address = request.remote_addr
+        user_agent = request.user_agent.string
+        user = session.get('username', 'Unknown')
 
-    log_entry = f"{timestamp} - IP: {ip_address} - User: {user} - Action: {action} - User Agent: {user_agent} \n"
+        log_entry = f"{timestamp} - IP: {ip_address} - User: {user} - Action: {action} - User Agent: {user_agent} \n"
 
-    with open('logs.txt', 'a') as log_file:
-        log_file.write(log_entry)
-def search_posts(query):
-    results = []
-    with open('posts.csv', 'r', newline='', encoding='utf-8') as csvfile:
-        reader = csv.reader(csvfile)
-        for row in reader:
-            post_text = row[0].lower()
-            user = row[1].lower()# Assuming post text is in the first column
-            post_words = post_text.split()  # Splitting post text into individual words
-            query_words = query.lower().split()  # Splitting query into individual words
-            if any(word in post_words for word in query_words) or any(word in user for word in query_words):
-                results.append({
-                    'text': row[0],
-                    'user': row[1],
-                    'comments': eval(row[2]),  # Assuming comments are stored as a list
-                    'image_url': row[3]
-                })
-    return results
+        with open('logs.txt', 'a') as log_file:
+            log_file.write(log_entry)
+
+    @staticmethod
+    def search_posts(query):
+        results = []
+        with open('posts.csv', 'r', newline='', encoding='utf-8') as csvfile:
+            reader = csv.reader(csvfile)
+            for row in reader:
+                post_text = row[0].lower()
+                user = row[1].lower()  # Assuming post text is in the first column
+                post_words = post_text.split()  # Splitting post text into individual words
+                query_words = query.lower().split()  # Splitting query into individual words
+                if any(word in post_words for word in query_words) or any(word in user for word in query_words):
+                    results.append({
+                        'text': row[0],
+                        'user': row[1],
+                        'comments': eval(row[2]),  # Assuming comments are stored as a list
+                        'image_url': row[3]
+                    })
+        return results
+################################################################################
+#                             APP ROUTES                                       #
+################################################################################
 @app.route('/logs', methods=['GET', 'POST'])
 def logread():
     if 'username' not in session or session['username'] not in sudo_users:
@@ -142,7 +167,7 @@ def logread():
     results = []
 
     # Read the logs from logs.txt
-    with open('logs.txt', 'r') as file:
+    with open('logs.txt', mode='r', encoding='utf-8') as file:
         logs = file.readlines()[::-1]
 
     if request.method == 'POST':
@@ -160,7 +185,7 @@ def credits():
 @app.route('/search')
 def search_page():
     query = request.args.get('q', '')
-    post_results = search_posts(query)  # Search posts.csv for matching posts
+    post_results = DataClass.search_posts(query)  # Search posts.csv for matching posts
     return render_template('search.html', query=query, post_results=post_results)
 def generate_sitemap():
     output = []
@@ -185,7 +210,7 @@ CSV_FILE = 'servers.csv'
 
 # Create the CSV file if it doesn't exist
 if not os.path.exists(CSV_FILE):
-    with open(CSV_FILE, 'w', newline='') as file:
+    with open(CSV_FILE, mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         # Write the header row
         writer.writerow(['Server Address', 'Description'])
@@ -201,7 +226,7 @@ def pastebin():
         description = request.form.get('description')
 
         # Append the server address and description to the CSV file
-        with open(CSV_FILE, 'a', newline='') as file:
+        with open(CSV_FILE, mode='a', encoding='utf-8', newline='') as file:
             writer = csv.writer(file)
             writer.writerow([server_address, description])
         # Redirect back to the pastebin page
@@ -209,7 +234,7 @@ def pastebin():
 
     # Read the server addresses and descriptions from the CSV file
     pastes = []
-    with open(CSV_FILE, 'r') as file:
+    with open(CSV_FILE, mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         next(reader)  # Skip the header row
         for row in reader:
@@ -231,7 +256,7 @@ def pastebin():
 def view_paste(index):
     # Read the specific pastebin entry from the CSV file using the index
     pastes = []
-    with open(CSV_FILE, 'r') as file:
+    with open(CSV_FILE, mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         next(reader)  # Skip the header row
         for row in reader:
@@ -255,22 +280,14 @@ def sitemap():
     sitemap_xml = generate_sitemap()
     response = Response(sitemap_xml, mimetype='application/xml')
     return response
-#@app.route('/live_stream')
-def live_stream():
-    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
-#@app.route('/start_stream')
-def start_stream():
-    global camera
-    if not camera.isOpened():
-        camera = cv2.VideoCapture(0)
-        return 'Camera stream started.'
-    else:
-        return 'Camera stream already started.'
+
+
+
 PROFILE_FILE = 'profile.csv'
 
 # Function to read profile data from CSV
 def read_profile(username):
-    with open(PROFILE_FILE, 'r') as file:
+    with open(PROFILE_FILE, mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         for row in reader:
             if row[0] == username:
@@ -285,11 +302,11 @@ def read_profile(username):
 # Function to write profile data to CSV
 def write_profile(profile):
     profiles = []
-    with open(PROFILE_FILE, 'r') as file:
+    with open(PROFILE_FILE, mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         profiles = list(reader)
 
-    with open(PROFILE_FILE, 'w', newline='') as file:
+    with open(PROFILE_FILE, mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         found = False
         for row in profiles:
@@ -338,26 +355,6 @@ def edit_profile():
 
     return render_template('edit_profile.html', profile=profile)
 
-@app.route('/stop_stream')
-def stop_stream():
-    global camera
-    if camera.isOpened():
-        camera.release()
-        cv2.destroyAllWindows()
-        return 'Camera stream stopped.'
-    else:
-        return 'Camera stream already stopped.'
-def gen_frames():
-    while True:
-        success, frame = camera.read()
-        if success:
-            ret, buffer = cv2.imencode('.jpg', cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            frame = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-        else:
-            break
-
 @app.errorhandler(404)
 def page_not_found(error):
     return render_template('404.html'),404
@@ -373,10 +370,10 @@ def send_message():
 
     message = [sender, receiver, message_text]
 
-    with open('messages.csv', 'a', newline='') as file:
+    with open('messages.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(message)
-    log_action(f"Sent message to {receiver}")
+    DataClass.log_action(f"Sent message to {receiver}")
     return redirect('/messages')
 
 @app.route('/messages')
@@ -385,13 +382,14 @@ def messages():
         return redirect('/login')
 
     messages = []
-    with open('messages.csv', 'r', newline='') as file:
+    with open('messages.csv', mode='r', encoding='utf-8', newline='') as file:
         reader = csv.reader(file)
         for row in reader:
             if session['username'].lower() in (row[0].lower(), row[1].lower()):
                 messages.append(row)
 
     return render_template('messages.html', messages=messages)
+
 @app.errorhandler(500)
 def internal_server_error(error):
     return jsonify({"error": "Internal server error."}), 500
@@ -413,11 +411,11 @@ def modify_post(post_index):
         posts[post_index][3] = modified_image
 
         # Write updated posts to posts.csv
-        with open('posts.csv', 'w', newline='') as posts_file:
+        with open('posts.csv', mode='a', encoding='utf-8', newline='') as posts_file:
             writer = csv.writer(posts_file)
             writer.writerows(posts)
 
-        log_action(f"Modified post at index {post_index}")
+        DataClass.log_action(f"Modified post at index {post_index}")
 
     return redirect(url_for('dashboard'))
 
@@ -430,11 +428,11 @@ def toggle_lock(username):
     action = request.form.get('action')
     if action == 'lock':
         locked_users.add(username)
-        log_action(f"Locked user: {username}")
+        DataClass.log_action(f"Locked user: {username}")
     elif action == 'unlock':
         if username in locked_users:
             locked_users.remove(username)
-            log_action(f"Unlocked user: {username}")
+            DataClass.log_action(f"Unlocked user: {username}")
 
     # Save locked users to locked.csv
     with open('locked.csv', 'w') as locked_file:
@@ -442,7 +440,6 @@ def toggle_lock(username):
             locked_file.write(locked_user + '\n')
 
     return redirect(url_for('dashboard'))
-
 
 # Route to display the dashboard
 @app.route('/dash')
@@ -452,7 +449,7 @@ def dashboard():
 
     # Load locked users from locked.csv
     try:
-        with open('locked.csv', 'r') as locked_file:
+        with open('locked.csv', mode='r', encoding='utf-8') as locked_file:
             locked_users = set(locked_file.read().splitlines())
     except FileNotFoundError:
         locked_users = set()
@@ -470,11 +467,11 @@ def delete_user(username):
     users = read_users()
     if username in users:
         del users[username]
-        with open('users.csv', 'w', newline='') as users_file:
+        with open('users.csv', mode='a', encoding='utf-8', newline='') as users_file:
             writer = csv.writer(users_file)
             for user, password in users.items():
                 writer.writerow([user, password])
-        log_action(f"Deleted user: {username}")
+        DataClass.log_action(f"Deleted user: {username}")
     return redirect(url_for('dashboard'))
 
 @app.route('/api/posts')
@@ -490,7 +487,7 @@ def get_users():
 @app.route('/api/search', methods=['GET'])
 def search_yes():
     query = request.args.get('q', '')
-    results = search_posts(query)
+    results = DataClass.search_posts(query)
     return jsonify([{'text': result['text'], 'username': result['user'], 'comments': result['comments'], 'image_url': result['image_url']} for result in results])
 
 @app.route('/modify_sudo/<username>')
@@ -509,7 +506,7 @@ def modify_sudo(username):
         for sudo_user in sudo_users:
             sudo_file.write(sudo_user + '\n')
 
-    log_action(action_message)
+    DataClass.log_action(action_message)
 
     return redirect(url_for('dashboard'))
 
@@ -530,7 +527,7 @@ def restrict_user(username):
         for restricted_user in restricted_users:
             restricted_file.write(restricted_user + '\n')
 
-    log_action(action_message)
+    DataClass.log_action(action_message)
 
     return redirect(url_for('dashboard'))
 
@@ -575,9 +572,7 @@ def home():
 @app.route('/view-mode')
 def home_view():
     return render_template('index.html',posts=posts)
-# ... (existing code) ...
 
-# New route to handle locking and unlocking
 
 @app.route('/signme/<usernama>')
 def signit(usernama):
@@ -585,7 +580,7 @@ def signit(usernama):
     variable_to_search = session['username']
     variable_to_write = usernama
     output_file = 'signed.csv'
-    with open(input_file, 'r') as file:
+    with open(input_file, mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         lines = list(reader)
 
@@ -602,31 +597,11 @@ def signit(usernama):
         new_row = [variable_to_search, variable_to_write]
         lines.append(new_row)
 
-    with open(output_file, 'w', newline='') as file:
+    with open(output_file, mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(lines)
     print("Variable written to signed.csv successfully.")
 
-# Example usage:
-# def signit(username,find=session['username']):
-#     def write_up(username, find):
-#         filename = 'signed.csv'
-#         with open(filename, 'r', newline='') as csvfile:
-#             reader = csv.reader(csvfile)
-#             rows = list(reader)
-#             row_index = -1  # Default index if not found
-#             for i, row in enumerate(rows):
-#                 if find in row:
-#                     row_index = i
-#                     break
-#         with open(filename, 'w', newline='') as csvfile:
-#             writer = csv.writer(csvfile)
-#             for i, row in enumerate(rows):
-#                 if i == row_index:
-#                     writer.writerow([username])
-#                 else:
-#                     writer.writerow(row)
-#     write_up(username)
 
 # Updated login route to check if the user is locked
 @app.route('/login', methods=['GET', 'POST'])
@@ -652,19 +627,19 @@ def login():
         if username in locked_users:
             return 'Ce compte est verrouillé. Contactez l\'administrateur pour plus d\'informations.'
 
-        hashed_password = hash_password(password)
+        hashed_password = DataClass.hash_password(password)
 
         # Check credentials
         try:
-            with open('users.csv', 'r') as file:
+            with open('users.csv', mode='r', encoding='utf-8') as file:
                 reader = csv.reader(file)
                 for row in reader:
                     if row[0] == username and row[1] == hashed_password:
                         session['username'] = username
-                        log_action(f"Logged in: {username}")
+                        DataClass.log_action(f"Logged in: {username}")
                         def write_username_to_csv(username):
                             filename = 'signed.csv'
-                            with open(filename, 'a', newline='') as csvfile:
+                            with open(filename, mode='a', encoding='utf-8', newline='') as csvfile:
                                 writer = csv.writer(csvfile)
                                 writer.writerow([username])
 
@@ -687,7 +662,7 @@ def login():
 @app.route('/logout', methods=['GET', 'POST'])
 def logout():
     if 'username' in session:
-        log_action(f"Logged out: {session['username']}")
+        DataClass.log_action(f"Logged out: {session['username']}")
         session.pop('username', None)
     return redirect('/')
 
@@ -720,21 +695,21 @@ def signup():
 
         # Check if username is available
         try:
-            with open('users.csv', 'r') as file:
+            with open('users.csv', 'r', encoding='utf-8') as file:
                 reader = csv.reader(file)
                 for row in reader:
                     if row[0] == username:
                         return 'Ce nom d\'utilisateur est déjà pris. Veuillez en choisir un autre.'
 
             # Add new user to users.csv
-            with open('users.csv', 'a') as file:
+            with open('users.csv', mode='a', encoding='utf-8') as file:
                 writer = csv.writer(file)
-                writer.writerow([username, hash_password(password)])
+                writer.writerow([username, DataClass.hash_password(password)])
 
             # Log in the new user
             session['username'] = username
 
-            log_action(f"Signed up: {username}")
+            DataClass.log_action(f"Signed up: {username}")
 
             return '''Bienvenue sur Winternet, une plateforme dédiée à la communication et à l'interaction entre ses utilisateurs. Avant d'utiliser nos services, veuillez lire attentivement les conditions d'utilisation suivantes: Contenu Inapproprié: 1.1. Tout contenu considéré comme (trop)raciste, (trop)sexiste, (trop)homophobe ou (trop)discriminatoire sera interdit sur notre plateforme. 1.2. Nous nous réservons le droit de supprimer tout contenu qui enfreint cette politique, sans préavis ni obligation de justification. Contenu Pornographique: 2.1. La diffusion de contenu pornographique est strictement interdite sur notre plateforme. 2.2. Tout contenu à caractère pornographique sera supprimé dès sa découverte. 2.3. Nous nous réservons le droit de prendre des mesures disciplinaires à l'égard des utilisateurs qui enfreignent cette politique, y compris la résiliation de leur compte. Responsabilité de l'Utilisateur: 3.1. Les utilisateurs sont responsables du contenu qu'ils publient sur notre plateforme. 3.2. En utilisant nos services, vous acceptez de ne pas publier de contenu offensant, illégal ou contraire à nos politiques. 3.3. Vous acceptez également de respecter les droits d'auteur et les droits de propriété intellectuelle des autres utilisateurs. Signalement de Contenu: 4.1. Nous encourageons les utilisateurs à signaler tout contenu inapproprié ou offensant qu'ils rencontrent sur notre plateforme. 4.2. Nous examinerons rapidement tous les signalements et prendrons les mesures appropriées. Modification des Conditions d'Utilisation: 5.1. Nous nous réservons le droit de modifier ces conditions d'utilisation à tout moment. 5.2. Les utilisateurs seront informés des changements via notre site Web ou par d'autres moyens appropriés. 5.3. En continuant à utiliser nos services après la publication des modifications, vous acceptez les nouvelles conditions d'utilisation. En utilisant nos services, vous reconnaissez avoir lu, compris et accepté les présentes conditions d'utilisation. Si vous ne les acceptez pas, veuillez ne pas utiliser notre plateforme. License GNU GPL v3. Si vous acceptez, veuillez vous rendre sur le <a href="https://winternet.pythonanywhere.com">Site Principal.</a>'''
         except FileNotFoundError:
@@ -747,7 +722,7 @@ def subscribe(username):
         return redirect(url_for('login'))
 
     # Check if the logged-in user is already subscribed
-    with open('subscriptions.csv', 'r') as file:
+    with open('subscriptions.csv', mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         for row in reader:
             if row[0] == session['username'] and row[1] == username:
@@ -768,64 +743,72 @@ def my_feed():
 
     # Get the subscriptions of the logged-in user
     subscriptions = set()
-    with open('subscriptions.csv', 'r') as file:
+    with open('subscriptions.csv', mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         for row in reader:
-            if row[0] == session['username']:
+            print(f"Subscription row: {row}")
+            if len(row) > 1 and row[0] == session['username']:
                 subscriptions.add(row[1])
+
+    # Get the liked hashtags of the logged-in user
+    liked_hashtags = set()
+    with open('likedhashtags.csv', mode='r', encoding='utf-8') as file:
+        reader = csv.reader(file)
+        for row in reader:
+            if len(row) > 1 and row[0] == session['username']:
+                liked_hashtags.update(json.loads(row[1]))
 
     # Get the posts of the users that the logged-in user is subscribed to and the users that they are subscribed to
     posts = []
-    with open('posts.csv', 'r') as file:
+    with open('posts.csv', mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
-        line_number = 0
         for row in reader:
-            line_number += 1
-            if row[1] in subscriptions or row[1] in get_subscribers(subscriptions):
-                score = 1 / (1 + math.log(line_number))  # Use logarithmic score based on line number
-                row.append(score)
+            if len(row) > 2 and (row[1] in subscriptions or any(hashtag in row[2] for hashtag in liked_hashtags)):
                 posts.append(row)
 
-    # Read the messages and format them
-    messages = []
-    with open('messages.csv', 'r', newline='') as file:
-        reader = csv.reader(file)
-        for row in reader:
-            if session['username'].lower() in (row[0].lower(), row[1].lower()):
-                formatted_message = f"Utilisateur @{row[0]} vous a envoyé '{row[2]}'"
-                messages.append([formatted_message])
+    return render_template('my_feed.html', posts=posts)
+@app.route('/add_liked_hashtags', methods=['GET', 'POST'])
+def add_liked_hashtags():
+    if 'username' not in session:
+        return redirect(url_for('login'))
 
-    # Shuffle posts initially
+    if request.method == 'POST':
+        new_hashtags = request.form.get('hashtags')
+        print(f"New hashtags input: {new_hashtags}")
+        if new_hashtags:
+            try:
+                new_hashtags = [hashtag.strip() for hashtag in new_hashtags.split(',')]
+                print(f"Parsed new hashtags: {new_hashtags}")
+            except Exception as e:
+                flash('Invalid format for hashtags')
+                return redirect(url_for('add_liked_hashtags'))
 
-    # Insert messages individually at random positions in the posts
-    #for message in messages:
-        #position = random.randint(0, len(posts))
-       # posts.insert(position, message)
+            with open('likedhashtags.csv', mode='r+', encoding='utf-8') as file:
+                reader = csv.reader(file)
+                rows = list(reader)
+                user_found = False
+                for row in rows:
+                    print(f"Liked hashtags row: {row}")
+                    if len(row) > 1 and row[0] == session['username']:
+                        current_hashtags = json.loads(row[1])
+                        current_hashtags.extend(new_hashtags)
+                        row[1] = json.dumps(list(set(current_hashtags)))  # Remove duplicates
+                        user_found = True
+                        break
+                if not user_found:
+                    rows.append([session['username'], json.dumps(new_hashtags)])
+                file.seek(0)
+                writer = csv.writer(file)
+                writer.writerows(rows)
+                file.truncate()
 
-    # Apply a ranking algorithm to the combined feed
-    ranked_feed = []
-    for item in posts:
-        if len(item) > 1:
-            # It's a post
-            score = item[-1]  # Use the score based on line number
-            if item[1] in subscriptions:
-                score += 2  # Additional score for being a post from a directly subscribed user
-        else:
-            # It's a message
-            score = 1  # Default score for messages
-        ranked_feed.append((score, item))
+        return redirect(url_for('my_feed'))
 
-    # Sort the feed by their scores
-    ranked_feed.sort(reverse=True, key=lambda x: x[0])
-
-    # Extract the posts and messages from the tuples
-    ranked_feed = [item for score, item in ranked_feed]
-
-    return render_template('my_feed.html', posts=ranked_feed)
+    return render_template('add_liked_hashtags.html')
 
 def get_subscribers(subscriptions):
     subscribers = set()
-    with open('subscriptions.csv', 'r') as file:
+    with open('subscriptions.csv', mode='r', encoding='utf-8') as file:
         reader = csv.reader(file)
         for row in reader:
             if row[1] in subscriptions:
@@ -839,6 +822,7 @@ failed_attempts = {}
 POST_LIMIT = 30
 EXTENDED_LIMIT = 5 * 60
 min_char=30
+
 @app.route('/new_post', methods=['POST'])
 def new_post():
     # Check if the user is logged in
@@ -846,101 +830,80 @@ def new_post():
         return redirect('/login')
 
     username = session['username']
-
-    # Get current time
     current_time = time.time()
 
-    # Check if the user has posted recently
+    # Check for posting limits
     if username in last_post_time:
         time_since_last_post = current_time - last_post_time[username]
 
-        # Check if the user is in extended block period (after 3 failed attempts)
         if failed_attempts.get(username, 0) >= 3:
             if time_since_last_post < EXTENDED_LIMIT:
                 return render_template('error.html', error_message="You are restricted from posting for 5 minutes due to multiple attempts.")
             else:
-                # Reset the failed attempts after the 5-minute block
                 failed_attempts[username] = 0
-        # Check the regular 30-second limit
         elif time_since_last_post < POST_LIMIT:
-            # Increment failed attempt count
             failed_attempts[username] = failed_attempts.get(username, 0) + 1
-
-            # If the user has failed 3 times, impose a 5-minute block
             if failed_attempts[username] >= 3:
                 return render_template('error.html', error_message="You are now restricted for 5 minutes due to multiple attempts.")
             else:
                 return render_template('error.html', error_message=f"Please wait {POST_LIMIT - int(time_since_last_post)} seconds before posting again.")
 
-    # Reset failed attempts on a successful post
+    # Process the post
     failed_attempts[username] = 0
-
-    # Update the user's last post time
     last_post_time[username] = current_time
 
-    # Get form data
     text = request.form.get('text')
     image = request.files.get('image')
     video = request.files.get('video')
     image_url = None
-    if len(text.replace(" ", ""))<min_char:
-        return render_template('error.html', error_message="Minimum 30 chars.")
-    # Check if the post should be anonymous
-    anonymous_mode = request.form.get('anonymous') == 'on'
 
-    # Upload image to Dropbox
+    if len(text.replace(" ", "")) < min_char:
+        return render_template('error.html', error_message="Minimum 30 chars.")
+
+    # Handle anonymous mode
+    anonymous_mode = request.form.get('anonymous') == 'on'
+    if anonymous_mode:
+        username = "Anonyme"
+
+    # Handle image upload
     if image:
         try:
             image_filename = secure_filename(image.filename)
             image_content = image.read()
             dbx.files_upload(image_content, f'/images/{image_filename}')
-
-            # Generate sharing link for the image
-            image_shared_link = dbx.sharing_create_shared_link(f'/images/{image_filename}').url
-
-            # Modify the image URL to use /media route
-            image_url = f"https://winternet.pythonanywhere.com" + "/media/" + image_filename
+            image_url = f"https://winternet.pythonanywhere.com/media/{image_filename}"
         except Exception as e:
             return render_template('error.html', error_message=e)
 
-    # Upload video to Dropbox
+    # Handle video upload
     if video:
         try:
             video_filename = secure_filename(video.filename)
             video_content = video.read()
             dbx.files_upload(video_content, f'/videos/{video_filename}')
-
-            # Generate sharing link for the video
-            video_shared_link = dbx.sharing_create_shared_link(f'/videos/{video_filename}').url
-
-            # Modify the video URL to use /media route
-            image_url = f'https://winternet.pythonanywhere.com' + "/media/" + video_filename
+            image_url = f"https://winternet.pythonanywhere.com/media/{video_filename}"
         except Exception as e:
             return render_template('error.html', error_message=e)
 
-    # If in anonymous mode, set username to "Anonyme"
-    if anonymous_mode:
-        username = "Anonyme"
-
-    # Create post
+    # Save the post
     post = [text, username, [], image_url, 0, [], session['username']]
-
-    # Append post to list of posts
     posts.append(post)
 
-    # Save new post to CSV
-    with open('posts.csv', 'w', newline='') as file:
+    with open('posts.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(posts)
 
-    log_action(f"Added new post by: {username}")
+    DataClass.log_action(f"Added new post by: {username}")
 
-    # Redirect to homepage
-    return redirect('/')
+    # Redirect to the "posting" page
+    return redirect('/posting')
+@app.route('/posting')
+def posting():
+    return render_template('posting.html')
 def load_groups():
     """Load groups from CSV file."""
     if os.path.exists('groups.csv'):
-        with open('groups.csv', 'r') as file:
+        with open('groups.csv', mode='r', encoding='utf-8') as file:
             reader = csv.reader(file)
             return list(reader)
     return []
@@ -949,7 +912,7 @@ groups = load_groups()
 
 def save_groups():
     """Save groups to CSV file."""
-    with open('groups.csv', 'w', newline='') as file:
+    with open('groups.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(groups)
 
@@ -958,7 +921,7 @@ def load_group_posts():
     """Load group posts from CSV file."""
     group_posts = []
     if os.path.exists('group_posts.csv'):
-        with open('group_posts.csv', 'r') as file:
+        with open('group_posts.csv', mode='r', encoding='utf-8') as file:
             reader = csv.reader(file)
             group_posts = list(reader)
     return group_posts
@@ -968,14 +931,14 @@ def load_group_members():
     """Load group members from CSV file."""
     members = []
     if os.path.exists('group_members.csv'):
-        with open('group_members.csv', 'r') as file:
+        with open('group_members.csv', mode='r', encoding='utf-8') as file:
             reader = csv.reader(file)
             members = list(reader)
     return members
 
 def save_group_members(members):
     """Save group members to CSV file."""
-    with open('group_members.csv', 'w', newline='') as file:
+    with open('group_members.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(members)
 
@@ -1063,7 +1026,7 @@ def new_group_post(group_name):
     post = [text, username, [], image_url, 0, [], group_name]
     group_posts.append(post)
 
-    with open('group_posts.csv', 'w', newline='') as file:
+    with open('group_posts.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(group_posts)
 
@@ -1123,11 +1086,11 @@ def add_comment(post_id):
     posts[post_id][2].append([text, username])
 
     # Save posts to CSV
-    with open('posts.csv', 'w', newline='') as file:
+    with open('posts.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(posts)
 
-    log_action(f"Added comment by: {username}")
+    DataClass.log_action(f"Added comment by: {username}")
     return render_template('back.html')
 @app.route('/post/<int:post_id>')
 def add(post_id):
@@ -1140,8 +1103,6 @@ def add(post_id):
                 break
     posts=[row]
     return render_template('post.html',posts=posts)
-
-    return redirect('/')
 @app.route('/upvote/<int:post_id>', methods=['POST'])
 def upvote(post_id):
     if 'username' not in session:
@@ -1164,11 +1125,11 @@ def upvote(post_id):
     posts[post_id][5] = upvotes_list
 
     # Save posts to CSV
-    with open('posts.csv', 'w', newline='') as file:
+    with open('posts.csv', mode='a', encoding='utf-8', newline='') as file:
         writer = csv.writer(file)
         writer.writerows(posts)
 
-    log_action(f"Added upvote by: {username}")
+    DataClass.log_action(f"Added upvote by: {username}")
 
 
     return render_template('back.html')
@@ -1191,11 +1152,11 @@ def repost(post_id):
         posts.append(reposted_post)
 
         # Save updated posts to CSV
-        with open('posts.csv', 'w', newline='') as file:
+        with open('posts.csv', mode='a', encoding='utf-8', newline='') as file:
             writer = csv.writer(file)
             writer.writerows(posts)
 
-        log_action(f"Reposted post by: {username}")
+        DataClass.log_action(f"Reposted post by: {username}")
 
     return render_template('back.html')
 
@@ -1211,11 +1172,11 @@ def delete_post(post_id):
         posts[post_id] = ["SUPPRIMÉ PAR " + session['username'], "Modérateur", [], None, None]
 
         # Save modified posts to CSV
-        with open('posts.csv', 'w', newline='') as file:
+        with open('posts.csv', mode='a', encoding='utf-8', newline='') as file:
             writer = csv.writer(file)
             writer.writerows(posts)
 
-        log_action(f"Deleted post by: {session['username']}")
+        DataClass.log_action(f"Deleted post by: {session['username']}")
 
     return render_template('back.html')
 @app.route('/media/<filename>')
@@ -1232,8 +1193,5 @@ def media(filename):
 
     # Render a blank page with the embedded link
     return render_template('media.html', shared_link=shared_link)
-@app.route('/tor_snow')
-def snow():
-    return render_template('snow.html')
 if __name__ == '__main__':
-    app.run(debug=False, port=8000)
+    app.run(host='0.0.0.0',debug=False, port=8000)
