@@ -51,74 +51,24 @@ Winternet is a web application built using Flask. It is a social media framework
 There is a long list of CSV files to create and manage, including:
 - [likedhashtags.csv] Stores liked hashtags for users.
 - [posts.csv]: Stores posts.
-Here is the full list:
-./locked.csv
 
-./users.csv
+    locked.csv
+    users.csv
+    profile.csv
+    groups.csv
+    posts.csv
+    group_posts.csv
+    messages.csv
+    subscriptions.csv
+    restricted.csv
+    sudo.csv
+    likedhashtags.csv
+    videos.csv
+    group_members.csv
+    images.csv
+    signed.csv
+    servers.csv
 
-./users.csv
-
-./locked.csv
-
-./profile.csv
-
-./groups.csv
-
-./posts.csv
-
-./group_posts.csv
-
-./users.csv
-
-./messages.csv
-
-./subscriptions.csv
-
-./restricted.csv
-
-./sudo.csv
-
-./likedhashtags.csv
-
-./videos.csv
-
-./group_members.csv
-
-./images.csv
-
-./signed.csv
-
-./servers.csv
-
-./profile.csv
-
-./groups.csv
-
-./posts.csv
-
-./group_posts.csv
-
-./users.csv
-
-./messages.csv
-
-./subscriptions.csv
-
-./restricted.csv
-
-./sudo.csv
-
-./likedhashtags.csv
-
-./videos.csv
-
-./group_members.csv
-
-./images.csv
-
-./signed.csv
-
-./servers.csv
 You will need to create these in the root directory
 ## Contributing
 
