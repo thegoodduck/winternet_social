@@ -13,5 +13,5 @@ requests==2.32.3
 ruff==0.9.2
 six==1.17.0
 stone==3.3.1
-urllib3==2.3.0
+urllib3==2.5.0
 Werkzeug==3.1.3
